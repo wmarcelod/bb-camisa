@@ -219,6 +219,42 @@ async function deleteFileIfExists(targetPath: string) {
   }
 }
 
+async function archiveResultCostLog(params: {
+  id: string;
+  session_id: string;
+  upload_id: string;
+  file_name: string;
+  request_id: string | null;
+  usage_json?: string | null;
+  settings_json?: string | null;
+  estimated_cost_usd?: number | null;
+  created_at: string;
+}) {
+  const database = await getDatabase();
+  const deletedAt = nowIso();
+
+  database
+    .prepare(
+      `INSERT OR IGNORE INTO result_cost_log (
+         id, result_id, session_id, upload_id, file_name, request_id, usage_json, settings_json,
+         estimated_cost_usd, created_at, deleted_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      crypto.randomUUID(),
+      params.id,
+      params.session_id,
+      params.upload_id,
+      params.file_name,
+      params.request_id || null,
+      params.usage_json || null,
+      params.settings_json || null,
+      params.estimated_cost_usd ?? null,
+      params.created_at,
+      deletedAt,
+    );
+}
+
 export async function getSessionState(sessionId: string) {
   const database = await getDatabase();
   const uploads = database
@@ -233,7 +269,8 @@ export async function getSessionState(sessionId: string) {
     .prepare(
       `SELECT id, upload_id, file_name, review_status, request_id, estimated_cost_usd, created_at
        FROM results
-       WHERE session_id = ?
+       WHERE session_id = ? AND 1=1
+       AND id NOT IN (SELECT result_id FROM result_cost_log)
        ORDER BY created_at DESC`,
     )
     .all(sessionId) as ResultRow[];
@@ -365,7 +402,9 @@ export async function getResultFile(sessionId: string, resultId: string) {
   const database = await getDatabase();
   return database
     .prepare(
-      "SELECT file_path AS filePath, mime_type AS mimeType, file_name AS fileName FROM results WHERE id = ? AND session_id = ?",
+      `SELECT file_path AS filePath, mime_type AS mimeType, file_name AS fileName
+       FROM results
+       WHERE id = ? AND session_id = ? AND id NOT IN (SELECT result_id FROM result_cost_log)`,
     )
     .get(resultId, sessionId) as
     | { filePath: string; mimeType: string; fileName: string }
@@ -376,7 +415,9 @@ export async function getAdminResultFile(resultId: string) {
   const database = await getDatabase();
   return database
     .prepare(
-      "SELECT file_path AS filePath, mime_type AS mimeType, file_name AS fileName FROM results WHERE id = ?",
+      `SELECT file_path AS filePath, mime_type AS mimeType, file_name AS fileName
+       FROM results
+       WHERE id = ? AND id NOT IN (SELECT result_id FROM result_cost_log)`,
     )
     .get(resultId) as
     | { filePath: string; mimeType: string; fileName: string }
@@ -502,13 +543,31 @@ export async function saveGenerationResult(params: {
 export async function deleteResultByUpload(sessionId: string, uploadId: string) {
   const database = await getDatabase();
   const existing = database
-    .prepare("SELECT id, file_path FROM results WHERE session_id = ? AND upload_id = ?")
-    .get(sessionId, uploadId) as { id: string; file_path: string } | undefined;
+    .prepare(
+      `SELECT id, session_id, upload_id, file_name, file_path, request_id, usage_json, settings_json, estimated_cost_usd, created_at
+       FROM results
+       WHERE session_id = ? AND upload_id = ?`,
+    )
+    .get(sessionId, uploadId) as
+    | {
+        id: string;
+        session_id: string;
+        upload_id: string;
+        file_name: string;
+        file_path: string;
+        request_id: string | null;
+        usage_json: string | null;
+        settings_json: string | null;
+        estimated_cost_usd: number | null;
+        created_at: string;
+      }
+    | undefined;
 
   if (!existing) {
     return;
   }
 
+  await archiveResultCostLog(existing);
   await deleteFileIfExists(existing.file_path);
   database
     .prepare("DELETE FROM results WHERE id = ?")
@@ -538,14 +597,31 @@ export async function updateResultSelection(params: {
   for (const resultId of deleteIds) {
     const row = database
       .prepare(
-        "SELECT id, upload_id, file_path FROM results WHERE id = ? AND session_id = ?",
+        `SELECT id, session_id, upload_id, file_name, file_path, request_id, usage_json, settings_json,
+                estimated_cost_usd, created_at
+         FROM results
+         WHERE id = ? AND session_id = ?`,
       )
-      .get(resultId, sessionId) as { id: string; upload_id: string; file_path: string } | undefined;
+      .get(resultId, sessionId) as
+      | {
+          id: string;
+          session_id: string;
+          upload_id: string;
+          file_name: string;
+          file_path: string;
+          request_id: string | null;
+          usage_json: string | null;
+          settings_json: string | null;
+          estimated_cost_usd: number | null;
+          created_at: string;
+        }
+      | undefined;
 
     if (!row) {
       continue;
     }
 
+    await archiveResultCostLog(row);
     await deleteFileIfExists(row.file_path);
     database.prepare("DELETE FROM results WHERE id = ?").run(row.id);
     database
@@ -600,16 +676,31 @@ export async function deleteAdminResult(resultId: string) {
   const timestamp = nowIso();
   const row = database
     .prepare(
-      "SELECT id, session_id, upload_id, file_path FROM results WHERE id = ?",
+      `SELECT id, session_id, upload_id, file_name, file_path, request_id, usage_json, settings_json,
+              estimated_cost_usd, created_at
+       FROM results
+       WHERE id = ?`,
     )
     .get(resultId) as
-    | { id: string; session_id: string; upload_id: string; file_path: string }
+    | {
+        id: string;
+        session_id: string;
+        upload_id: string;
+        file_name: string;
+        file_path: string;
+        request_id: string | null;
+        usage_json: string | null;
+        settings_json: string | null;
+        estimated_cost_usd: number | null;
+        created_at: string;
+      }
     | undefined;
 
   if (!row) {
     return false;
   }
 
+  await archiveResultCostLog(row);
   await deleteFileIfExists(row.file_path);
   database.prepare("DELETE FROM results WHERE id = ?").run(row.id);
   database
@@ -659,6 +750,7 @@ export async function listAdminGallery() {
          uploads.original_name
        FROM results
        INNER JOIN uploads ON uploads.id = results.upload_id
+       WHERE results.id NOT IN (SELECT result_id FROM result_cost_log)
        ORDER BY results.created_at DESC`,
     )
     .all() as AdminResultRow[];
@@ -686,6 +778,7 @@ export async function getAdminUsageSummary() {
     .prepare(
       `SELECT review_status, usage_json, estimated_cost_usd
        FROM results
+       WHERE id NOT IN (SELECT result_id FROM result_cost_log)
        ORDER BY created_at DESC`,
     )
     .all() as Array<{
@@ -712,6 +805,34 @@ export async function getAdminUsageSummary() {
 
     if (typeof row.estimated_cost_usd === "number") {
       trackedCount += 1;
+      exactSpentUsd += row.estimated_cost_usd;
+    }
+
+    const usage = parseJson<ImageUsage>(row.usage_json);
+
+    if (!usage) {
+      continue;
+    }
+
+    totalInputTextTokens += usage.input_tokens_details?.text_tokens || 0;
+    totalInputImageTokens += usage.input_tokens_details?.image_tokens || 0;
+    totalOutputTextTokens += usage.output_tokens_details?.text_tokens || 0;
+    usageCount += 1;
+  }
+
+  const archivedRows = database
+    .prepare(
+      `SELECT usage_json, estimated_cost_usd
+       FROM result_cost_log
+       ORDER BY created_at DESC`,
+    )
+    .all() as Array<{
+      usage_json: string | null;
+      estimated_cost_usd: number | null;
+    }>;
+
+  for (const row of archivedRows) {
+    if (typeof row.estimated_cost_usd === "number") {
       exactSpentUsd += row.estimated_cost_usd;
     }
 

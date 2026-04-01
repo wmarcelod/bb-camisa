@@ -73,6 +73,20 @@ function initializeDatabase(database: DatabaseSync) {
       value TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS result_cost_log (
+      id TEXT PRIMARY KEY,
+      result_id TEXT NOT NULL UNIQUE,
+      session_id TEXT NOT NULL,
+      upload_id TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      request_id TEXT,
+      usage_json TEXT,
+      settings_json TEXT,
+      estimated_cost_usd REAL,
+      created_at TEXT NOT NULL,
+      deleted_at TEXT NOT NULL
+    );
   `);
 
   ensureColumn(database, "results", "usage_json", "TEXT");
