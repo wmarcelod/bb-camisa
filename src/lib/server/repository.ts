@@ -210,6 +210,13 @@ function ensureRepositorySchema(database: Awaited<ReturnType<typeof getDatabase>
       deleted_at TEXT NOT NULL
     );
   `);
+
+  ensureColumn(database, "result_cost_log", "request_id", "TEXT");
+  ensureColumn(database, "result_cost_log", "usage_json", "TEXT");
+  ensureColumn(database, "result_cost_log", "settings_json", "TEXT");
+  ensureColumn(database, "result_cost_log", "estimated_cost_usd", "REAL");
+  ensureColumn(database, "result_cost_log", "created_at", "TEXT");
+  ensureColumn(database, "result_cost_log", "deleted_at", "TEXT");
 }
 
 function getExtension(filename: string, mimeType: string) {
