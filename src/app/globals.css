@@ -455,6 +455,12 @@ img {
   margin-top: 24px;
 }
 
+.results-note {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 .results-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

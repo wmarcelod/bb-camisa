@@ -65,7 +65,6 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
   const cropQueueRef = useRef<CropCandidate[]>([]);
   const activeCropRef = useRef<CropCandidate | null>(null);
 
-  const [sessionId, setSessionId] = useState<string | null>(null);
   const [uploads, setUploads] = useState<SessionUpload[]>([]);
   const [results, setResults] = useState<SessionResult[]>([]);
   const [selectedResultIds, setSelectedResultIds] = useState<string[]>([]);
@@ -111,7 +110,6 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
     });
     const payload = (await response.json()) as SessionPayload;
 
-    setSessionId(payload.sessionId);
     setUploads(payload.uploads);
     setResults(payload.results);
     setSelectedResultIds((current) => {
@@ -138,7 +136,6 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
           return;
         }
 
-        setSessionId(payload.sessionId);
         setUploads(payload.uploads);
         setResults(payload.results);
         setSelectedResultIds(
@@ -274,7 +271,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
     const incoming = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
 
     if (!incoming.length) {
-      setFeedback("Selecione arquivos de imagem validos.");
+      setFeedback("Selecione imagens.");
       return;
     }
 
@@ -282,7 +279,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
     const availableSlots = MAX_BATCH_SIZE - pendingCount;
 
     if (availableSlots <= 0) {
-      setFeedback(`Limite de ${MAX_BATCH_SIZE} fotos por sessao.`);
+      setFeedback(`Limite de ${MAX_BATCH_SIZE} fotos.`);
       return;
     }
 
@@ -327,7 +324,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
       const notices: string[] = [];
 
       if (incoming.length > availableSlots) {
-        notices.push(`Somente as primeiras ${availableSlots} fotos entraram nesta sessao.`);
+        notices.push(`Somente as primeiras ${availableSlots} fotos entraram.`);
       }
 
       if (cropCandidates.length) {
@@ -342,7 +339,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
       setFeedback(
         error instanceof Error
           ? error.message
-          : "Nao foi possivel preparar as imagens enviadas.",
+          : "Nao foi possivel preparar as imagens.",
       );
     } finally {
       setIsPreparingFiles(false);
@@ -391,7 +388,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
 
     if (!response.ok) {
       const payload = (await response.json()) as { error?: string };
-      setFeedback(payload.error || "Nao foi possivel remover a foto.");
+      setFeedback(payload.error || "Nao foi possivel remover.");
       return;
     }
 
@@ -440,14 +437,14 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
       const payload = (await response.json()) as { error?: string };
 
       if (!response.ok) {
-        throw new Error(payload.error || "Nao foi possivel salvar a selecao.");
+        throw new Error(payload.error || "Nao foi possivel marcar.");
       }
 
       await refreshSession();
-      setFeedback("Selecao salva no servidor.");
+      setFeedback("Marcadas.");
     } catch (error) {
       setFeedback(
-        error instanceof Error ? error.message : "Nao foi possivel salvar a selecao.",
+        error instanceof Error ? error.message : "Nao foi possivel marcar.",
       );
     } finally {
       setIsSavingSelection(false);
@@ -468,7 +465,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
     const payload = (await response.json()) as { error?: string };
 
     if (!response.ok) {
-      setFeedback(payload.error || "Nao foi possivel remover o resultado.");
+      setFeedback(payload.error || "Nao foi possivel remover.");
       return;
     }
 
@@ -485,7 +482,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
 
     revokeCandidate(target);
     advanceCropQueue();
-    setFeedback("Foto mantida no servidor. Ajuste depois para liberar a geracao.");
+    setFeedback("Ajuste depois.");
   }
 
   async function applyCrop() {
@@ -513,7 +510,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
       advanceCropQueue();
       await persistPreparedFiles([candidate]);
       revokeCandidate(candidate);
-      setFeedback("Foto salva no servidor.");
+      setFeedback("Foto ajustada.");
     } catch (error) {
       setFeedback(
         error instanceof Error ? error.message : "Nao foi possivel aplicar o recorte.",
@@ -534,11 +531,12 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
     });
 
     if (!targets.length) {
-      setFeedback("Nao ha fotos pendentes para gerar.");
+      setFeedback("Nada para gerar.");
       return;
     }
 
     setIsGenerating(true);
+    let failedCount = 0;
 
     try {
       for (const [index, upload] of targets.entries()) {
@@ -564,12 +562,12 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
         };
 
         if (!response.ok || !payload.result) {
-          const message = payload.error || "Falha ao gerar a imagem.";
+          failedCount += 1;
 
           setUploads((current) =>
             current.map((item) =>
               item.id === upload.id
-                ? { ...item, generationStatus: "error", errorMessage: message }
+                ? { ...item, generationStatus: "error", errorMessage: "Falha ao gerar" }
                 : item,
             ),
           );
@@ -590,6 +588,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
       }
 
       await refreshSession();
+      setFeedback(failedCount ? `${failedCount} foto(s) nao foram geradas.` : null);
     } finally {
       setIsGenerating(false);
       setProgressText(null);
@@ -611,14 +610,13 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
           <div className="hero-metrics">
             <span>Entrada 3x4</span>
             <span>Lote ate {MAX_BATCH_SIZE}</span>
-            <span>Sessao {sessionId ? sessionId.slice(0, 8) : "..."}</span>
           </div>
         </div>
         <div className="status-card">
           <span className={`status-pill ${openAiConfigured ? "ready" : "warning"}`}>
-            {openAiConfigured ? "Pronto" : "OpenAI pendente"}
+            {openAiConfigured ? "Ativo" : "Indisponivel"}
           </span>
-          <p>{openAiConfigured ? "Pode gerar." : "Falta OPENAI_API_KEY no Dokploy."}</p>
+          <p>{openAiConfigured ? "Envie, ajuste e gere." : "Geracao indisponivel no momento."}</p>
           <div className="status-grid">
             <div>
               <strong>Uploads</strong>
@@ -694,7 +692,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
             />
             <p className="dropzone-title">Solte as fotos aqui ou selecione.</p>
             <p className="dropzone-meta">
-              Ate {MAX_BATCH_SIZE} fotos por sessao, sempre salvas no servidor.
+              Ate {MAX_BATCH_SIZE} fotos.
             </p>
             <button
               className="primary-button"
@@ -751,7 +749,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
                           : upload.generationStatus === "processing"
                             ? "Gerando"
                             : upload.generationStatus === "error"
-                              ? upload.errorMessage || "Erro"
+                              ? "Falha ao gerar"
                               : "Salva"}
                     </small>
                   </div>
@@ -777,7 +775,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
               ))
             ) : (
               <div className="empty-state">
-                <p>{isLoadingSession ? "Carregando sessao..." : "Nenhuma foto."}</p>
+                <p>{isLoadingSession ? "Carregando..." : "Nenhuma foto."}</p>
                 <span>Adicione imagens para montar o lote.</span>
               </div>
             )}
@@ -804,7 +802,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
               {progressText ||
                 (pendingCropCount
                   ? "Ajuste as fotos fora de 3x4."
-                  : "Fotos desta sessao ficam isoladas para este navegador.")}
+                  : "As geradas aparecem abaixo.")}
             </p>
           </div>
         </div>
@@ -835,7 +833,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
         <div className="panel-header">
           <div>
             <p className="eyebrow">Saida</p>
-            <h2>Resultados desta sessao</h2>
+            <h2>Resultados</h2>
           </div>
           <button
             className="primary-button"
@@ -843,9 +841,10 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
             onClick={() => void saveSelectedResults()}
             disabled={!savableSelectionCount || isSavingSelection}
           >
-            {isSavingSelection ? "Salvando..." : `Salvar selecionadas (${savableSelectionCount})`}
+            {isSavingSelection ? "Marcando..." : `Marcar boas (${savableSelectionCount})`}
           </button>
         </div>
+        <p className="results-note">Todas as imagens geradas aparecem aqui e ficam salvas.</p>
 
         <div className="results-grid">
           {results.length ? (
@@ -865,8 +864,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
                   </div>
                   <div className="result-meta">
                     <strong>{result.fileName}</strong>
-                    <span>{result.reviewStatus === "kept" ? "Selecionada" : "Pendente"}</span>
-                    {result.requestId ? <small>Request ID: {result.requestId}</small> : null}
+                    <span>{result.reviewStatus === "kept" ? "Selecionada" : "Gerada"}</span>
                   </div>
                   <div className="result-actions">
                     <button
@@ -889,8 +887,8 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
             })
           ) : (
             <div className="empty-state results-empty">
-              <p>Os resultados aparecem aqui.</p>
-              <span>Somente esta sessao enxerga estas imagens.</span>
+              <p>Nenhuma imagem gerada ainda.</p>
+              <span>As imagens prontas aparecem aqui.</span>
             </div>
           )}
         </div>
