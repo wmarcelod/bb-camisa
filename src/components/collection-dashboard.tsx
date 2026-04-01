@@ -312,16 +312,8 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
             <strong>{formatUsd(data?.summary.exactSpentUsd ?? null)}</strong>
           </article>
           <article className="admin-stat-card">
-            <span>Total estimado</span>
-            <strong>{formatUsd(data?.summary.estimatedTotalUsd ?? null)}</strong>
-          </article>
-          <article className="admin-stat-card">
             <span>Estimativa por imagem</span>
             <strong>{formatUsd(data?.summary.estimatedCostPerImageUsd ?? null)}</strong>
-          </article>
-          <article className="admin-stat-card">
-            <span>Sem custo salvo</span>
-            <strong>{data?.summary.legacyCount ?? 0}</strong>
           </article>
         </div>
 
@@ -487,6 +479,14 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                   </label>
                 </div>
               ) : null}
+
+              <div className="model-estimate-strip">
+                <span>Total estimado</span>
+                <strong>{formatUsd(data?.summary.estimatedTotalUsd ?? null)}</strong>
+                <small>
+                  {data?.summary.legacyCount ?? 0} imagem(ns) sem custo real salvo
+                </small>
+              </div>
 
               <div className="admin-actions">
                 <button

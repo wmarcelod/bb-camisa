@@ -707,6 +707,25 @@ img {
   padding: 20px;
 }
 
+.model-estimate-strip {
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(21, 84, 63, 0.06);
+  border: 1px solid rgba(21, 84, 63, 0.1);
+}
+
+.model-estimate-strip span,
+.model-estimate-strip small {
+  color: var(--muted);
+}
+
+.model-estimate-strip strong {
+  font-family: var(--font-heading), sans-serif;
+  font-size: 1.2rem;
+}
+
 .admin-card-header {
   display: flex;
   align-items: start;
