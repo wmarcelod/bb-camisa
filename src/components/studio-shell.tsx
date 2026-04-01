@@ -2,7 +2,14 @@
 
 import Image from "next/image";
 import JSZip from "jszip";
+import Cropper, { type Area, type Point } from "react-easy-crop";
 import { useEffect, useRef, useState } from "react";
+import {
+  cropImageFile,
+  isThreeByFour,
+  loadImageDimensions,
+  TARGET_CROP_ASPECT,
+} from "@/lib/image-processing";
 import { EXACT_IMAGE_PROMPT, MAX_BATCH_SIZE, MAX_FILE_SIZE_MB } from "@/lib/prompt";
 import { formatBytes } from "@/lib/utils";
 
@@ -15,6 +22,11 @@ type UploadItem = {
   id: string;
   file: File;
   previewUrl: string;
+};
+
+type CropCandidate = UploadItem & {
+  width: number;
+  height: number;
 };
 
 type ResultItem = {
@@ -43,6 +55,12 @@ function revokeItems(items: UploadItem[]) {
   }
 }
 
+function revokeCropCandidates(items: CropCandidate[]) {
+  for (const item of items) {
+    URL.revokeObjectURL(item.previewUrl);
+  }
+}
+
 function dataUrlToBase64(value: string) {
   const [, base64 = ""] = value.split(",");
   return base64;
@@ -51,28 +69,86 @@ function dataUrlToBase64(value: string) {
 export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const uploadsRef = useRef<UploadItem[]>([]);
+  const cropQueueRef = useRef<CropCandidate[]>([]);
+  const activeCropRef = useRef<CropCandidate | null>(null);
+
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [results, setResults] = useState<ResultItem[]>([]);
+  const [cropQueue, setCropQueue] = useState<CropCandidate[]>([]);
+  const [activeCrop, setActiveCrop] = useState<CropCandidate | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isPreparingFiles, setIsPreparingFiles] = useState(false);
+  const [isSavingCrop, setIsSavingCrop] = useState(false);
   const [progress, setProgress] = useState<ProgressState | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
   useEffect(() => {
     uploadsRef.current = uploads;
   }, [uploads]);
 
   useEffect(() => {
+    cropQueueRef.current = cropQueue;
+  }, [cropQueue]);
+
+  useEffect(() => {
+    activeCropRef.current = activeCrop;
+
+    if (activeCrop) {
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setCroppedAreaPixels(null);
+    }
+  }, [activeCrop]);
+
+  useEffect(() => {
     return () => {
       revokeItems(uploadsRef.current);
+      revokeCropCandidates(cropQueueRef.current);
+
+      if (activeCropRef.current) {
+        URL.revokeObjectURL(activeCropRef.current.previewUrl);
+      }
     };
   }, []);
 
   function openFilePicker() {
-    fileInputRef.current?.click();
+    if (!isPreparingFiles && !isGenerating) {
+      fileInputRef.current?.click();
+    }
   }
 
-  function appendFiles(fileList: FileList | File[]) {
+  function queueCropTasks(tasks: CropCandidate[]) {
+    if (!tasks.length) {
+      return;
+    }
+
+    const combined = [...cropQueueRef.current, ...tasks];
+
+    if (!activeCropRef.current) {
+      const [next, ...rest] = combined;
+      setActiveCrop(next ?? null);
+      setCropQueue(rest);
+      return;
+    }
+
+    setCropQueue(combined);
+  }
+
+  function advanceCropQueue() {
+    const [next, ...rest] = cropQueueRef.current;
+    setCropQueue(rest);
+    setActiveCrop(next ?? null);
+  }
+
+  async function appendFiles(fileList: FileList | File[]) {
+    if (isPreparingFiles) {
+      return;
+    }
+
     const incoming = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
 
     if (!incoming.length) {
@@ -80,26 +156,75 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
       return;
     }
 
-    const availableSlots = MAX_BATCH_SIZE - uploads.length;
+    const pendingCount =
+      uploadsRef.current.length +
+      cropQueueRef.current.length +
+      (activeCropRef.current ? 1 : 0);
+    const availableSlots = MAX_BATCH_SIZE - pendingCount;
 
     if (availableSlots <= 0) {
       setFeedback(`O lote suporta no maximo ${MAX_BATCH_SIZE} imagens por vez.`);
       return;
     }
 
-    const selected = incoming.slice(0, availableSlots).map((file) => ({
-      id: crypto.randomUUID(),
-      file,
-      previewUrl: URL.createObjectURL(file),
-    }));
+    const selectedFiles = incoming.slice(0, availableSlots);
+    const preparedFiles: CropCandidate[] = [];
 
-    if (incoming.length > availableSlots) {
-      setFeedback(`Somente as primeiras ${availableSlots} imagens foram adicionadas ao lote.`);
-    } else {
-      setFeedback(null);
+    setIsPreparingFiles(true);
+
+    try {
+      for (const file of selectedFiles) {
+        const { previewUrl, width, height } = await loadImageDimensions(file);
+
+        preparedFiles.push({
+          id: crypto.randomUUID(),
+          file,
+          previewUrl,
+          width,
+          height,
+        });
+      }
+
+      const readyUploads: UploadItem[] = [];
+      const needsCrop: CropCandidate[] = [];
+
+      for (const file of preparedFiles) {
+        if (isThreeByFour(file.width, file.height)) {
+          readyUploads.push({
+            id: file.id,
+            file: file.file,
+            previewUrl: file.previewUrl,
+          });
+        } else {
+          needsCrop.push(file);
+        }
+      }
+
+      if (readyUploads.length) {
+        setUploads((current) => [...current, ...readyUploads]);
+      }
+
+      queueCropTasks(needsCrop);
+
+      const messages: string[] = [];
+
+      if (incoming.length > availableSlots) {
+        messages.push(`Somente as primeiras ${availableSlots} imagens foram adicionadas ao lote.`);
+      }
+
+      if (needsCrop.length) {
+        messages.push(
+          `${needsCrop.length} imagem(ns) precisam de enquadramento 3x4 antes de entrar no lote.`,
+        );
+      }
+
+      setFeedback(messages.length ? messages.join(" ") : null);
+    } catch {
+      revokeCropCandidates(preparedFiles);
+      setFeedback("Nao foi possivel analisar uma das imagens. Tente novamente com outro arquivo.");
+    } finally {
+      setIsPreparingFiles(false);
     }
-
-    setUploads((current) => [...current, ...selected]);
   }
 
   function removeUpload(id: string) {
@@ -115,13 +240,77 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
   }
 
   function clearUploads() {
-    revokeItems(uploads);
+    revokeItems(uploadsRef.current);
+    revokeCropCandidates(cropQueueRef.current);
+
+    if (activeCropRef.current) {
+      URL.revokeObjectURL(activeCropRef.current.previewUrl);
+    }
+
     setUploads([]);
+    setCropQueue([]);
+    setActiveCrop(null);
+    setResults([]);
     setFeedback(null);
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
+  }
+
+  function skipCrop() {
+    const target = activeCropRef.current;
+
+    if (!target) {
+      return;
+    }
+
+    URL.revokeObjectURL(target.previewUrl);
+    setFeedback(`A imagem ${target.file.name} foi ignorada porque nao estava no formato 3x4.`);
+    advanceCropQueue();
+  }
+
+  async function applyCrop() {
+    const target = activeCropRef.current;
+
+    if (!target || !croppedAreaPixels) {
+      return;
+    }
+
+    setIsSavingCrop(true);
+
+    try {
+      const croppedFile = await cropImageFile(
+        target.previewUrl,
+        croppedAreaPixels,
+        target.file,
+      );
+      const previewUrl = URL.createObjectURL(croppedFile);
+
+      setUploads((current) => [
+        ...current,
+        {
+          id: target.id,
+          file: croppedFile,
+          previewUrl,
+        },
+      ]);
+
+      URL.revokeObjectURL(target.previewUrl);
+      setFeedback(`Imagem ${target.file.name} ajustada para o enquadramento 3x4.`);
+      advanceCropQueue();
+    } catch (error) {
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel recortar a imagem selecionada.",
+      );
+    } finally {
+      setIsSavingCrop(false);
+    }
   }
 
   async function generateBatch() {
-    if (!uploads.length || isGenerating) {
+    if (!uploads.length || isGenerating || activeCrop || cropQueue.length) {
       return;
     }
 
@@ -169,7 +358,8 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
           },
         ]);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Erro inesperado durante a geracao.";
+        const message =
+          error instanceof Error ? error.message : "Erro inesperado durante a geracao.";
 
         setResults((current) => [
           ...current,
@@ -226,6 +416,8 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
     link.click();
   }
 
+  const pendingCropCount = cropQueue.length + (activeCrop ? 1 : 0);
+
   return (
     <main className="page-shell">
       <section className="hero-panel">
@@ -233,13 +425,13 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
           <p className="eyebrow">BB Camisa Studio</p>
           <h1>Upload individual ou em lote para vestir a camisa-base com OpenAI.</h1>
           <p className="hero-text">
-            O fluxo usa sempre a foto da pessoa como Imagem 1, a camisa salva no servidor como Imagem 2 e o prompt fixo
-            no backend para manter consistencia no resultado.
+            O fluxo usa sempre a foto da pessoa como Imagem 1, a camisa salva no servidor
+            como Imagem 2 e o prompt fixo no backend para manter consistencia no resultado.
           </p>
           <div className="hero-metrics">
             <span>Prompt travado no servidor</span>
             <span>Edicao com 2 imagens de referencia</span>
-            <span>Lote de ate {MAX_BATCH_SIZE} fotos</span>
+            <span>Entrada obrigatoria em 3x4</span>
           </div>
         </div>
         <div className="status-card">
@@ -253,8 +445,8 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
           </p>
           <div className="status-grid">
             <div>
-              <strong>Formato</strong>
-              <span>JPEG</span>
+              <strong>Entrada</strong>
+              <span>3 x 4</span>
             </div>
             <div>
               <strong>Saida</strong>
@@ -279,7 +471,14 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
               <p className="eyebrow">Entrada</p>
               <h2>Fotos da pessoa</h2>
             </div>
-            <button className="ghost-button" type="button" onClick={clearUploads} disabled={!uploads.length || isGenerating}>
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={clearUploads}
+              disabled={
+                (!uploads.length && !pendingCropCount) || isGenerating || isPreparingFiles
+              }
+            >
               Limpar lote
             </button>
           </div>
@@ -301,7 +500,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
             onDrop={(event) => {
               event.preventDefault();
               setIsDragging(false);
-              appendFiles(event.dataTransfer.files);
+              void appendFiles(event.dataTransfer.files);
             }}
           >
             <input
@@ -310,23 +509,39 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
               type="file"
               accept="image/*"
               multiple
+              disabled={isPreparingFiles || isGenerating}
               onChange={(event) => {
                 if (event.target.files) {
-                  appendFiles(event.target.files);
+                  void appendFiles(event.target.files);
                 }
+
                 event.currentTarget.value = "";
               }}
             />
-            <p className="dropzone-title">Arraste imagens aqui ou selecione no computador.</p>
-            <p className="dropzone-meta">
-              Ate {MAX_BATCH_SIZE} arquivos por lote. Limite recomendado de {MAX_FILE_SIZE_MB} MB por imagem.
+            <p className="dropzone-title">
+              Arraste imagens aqui ou selecione no computador.
             </p>
-            <button className="primary-button" type="button" onClick={openFilePicker}>
-              Escolher imagens
+            <p className="dropzone-meta">
+              Todas as fotos entram em 3x4. Se a proporcao nao bater, abrimos um quadro
+              interativo para enquadrar antes do lote.
+            </p>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={openFilePicker}
+              disabled={isPreparingFiles || isGenerating}
+            >
+              {isPreparingFiles ? "Analisando..." : "Escolher imagens"}
             </button>
           </div>
 
           {feedback ? <p className="feedback-line">{feedback}</p> : null}
+          {pendingCropCount ? (
+            <div className="crop-alert">
+              <strong>{pendingCropCount} imagem(ns) aguardando enquadramento 3x4.</strong>
+              <span>Finalize o recorte para liberar o processamento do lote.</span>
+            </div>
+          ) : null}
 
           <div className="upload-list">
             {uploads.length ? (
@@ -338,8 +553,14 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
                   <div className="upload-meta">
                     <strong>{item.file.name}</strong>
                     <span>{formatBytes(item.file.size)}</span>
+                    <small>Pronto em 3x4</small>
                   </div>
-                  <button className="icon-button" type="button" onClick={() => removeUpload(item.id)} disabled={isGenerating}>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    onClick={() => removeUpload(item.id)}
+                    disabled={isGenerating || isPreparingFiles}
+                  >
                     Remover
                   </button>
                 </article>
@@ -347,7 +568,10 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
             ) : (
               <div className="empty-state">
                 <p>Nenhuma foto adicionada ainda.</p>
-                <span>O lote pode ter uma unica foto ou varias para processar em sequencia.</span>
+                <span>
+                  O lote pode ter uma unica foto ou varias. O sistema bloqueia a etapa final
+                  ate todas estarem enquadradas em 3x4.
+                </span>
               </div>
             )}
           </div>
@@ -357,7 +581,15 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
               className="primary-button"
               type="button"
               onClick={generateBatch}
-              disabled={!uploads.length || isGenerating || !openAiConfigured}
+              disabled={
+                !uploads.length ||
+                isGenerating ||
+                !openAiConfigured ||
+                isPreparingFiles ||
+                isSavingCrop ||
+                Boolean(activeCrop) ||
+                cropQueue.length > 0
+              }
             >
               {isGenerating ? "Gerando..." : "Gerar lote"}
             </button>
@@ -365,8 +597,14 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
               <p className="progress-line">
                 Processando {progress.current}/{progress.total}: {progress.fileName}
               </p>
+            ) : pendingCropCount ? (
+              <p className="progress-line">
+                Conclua o enquadramento 3x4 das imagens pendentes para habilitar o lote.
+              </p>
             ) : (
-              <p className="progress-line">O backend envia cada foto separadamente para manter controle do lote.</p>
+              <p className="progress-line">
+                O backend envia cada foto separadamente para manter controle do lote.
+              </p>
             )}
           </div>
         </div>
@@ -382,7 +620,10 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
             <div className="shirt-preview">
               <Image alt="Camisa-base" fill sizes="(max-width: 900px) 100vw, 420px" src={baseShirtPath} priority />
             </div>
-            <p className="aside-note">Esta imagem fica no servidor e entra em toda requisicao como a segunda referencia visual.</p>
+            <p className="aside-note">
+              Esta imagem fica no servidor e entra em toda requisicao como a segunda
+              referencia visual.
+            </p>
           </div>
 
           <div className="panel prompt-panel">
@@ -403,7 +644,12 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
             <p className="eyebrow">Saida</p>
             <h2>Resultados gerados</h2>
           </div>
-          <button className="ghost-button" type="button" onClick={downloadAll} disabled={!results.some((item) => item.status === "done")}>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={downloadAll}
+            disabled={!results.some((item) => item.status === "done")}
+          >
             Baixar tudo em ZIP
           </button>
         </div>
@@ -440,11 +686,88 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
           ) : (
             <div className="empty-state results-empty">
               <p>Os renders aparecem aqui apos o processamento.</p>
-              <span>Se alguma imagem falhar, o lote continua e o erro fica isolado no card correspondente.</span>
+              <span>
+                Se alguma imagem falhar, o lote continua e o erro fica isolado no card
+                correspondente.
+              </span>
             </div>
           )}
         </div>
       </section>
+
+      {activeCrop ? (
+        <div className="cropper-overlay" role="dialog" aria-modal="true">
+          <div className="cropper-dialog">
+            <div className="cropper-header">
+              <div>
+                <p className="eyebrow">Enquadramento obrigatorio</p>
+                <h2>Ajuste a foto para 3x4</h2>
+              </div>
+              <div className="cropper-queue">
+                <strong>
+                  {pendingCropCount} imagem(ns) restante(s)
+                </strong>
+                <span>
+                  Original: {activeCrop.width} x {activeCrop.height}
+                </span>
+              </div>
+            </div>
+
+            <div className="cropper-stage">
+              <Cropper
+                image={activeCrop.previewUrl}
+                crop={crop}
+                zoom={zoom}
+                aspect={TARGET_CROP_ASPECT}
+                showGrid={false}
+                cropShape="rect"
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={(_, areaPixels) => setCroppedAreaPixels(areaPixels)}
+              />
+            </div>
+
+            <div className="cropper-footer">
+              <div className="cropper-controls">
+                <label className="slider-field">
+                  <span>Zoom</span>
+                  <input
+                    type="range"
+                    min="1"
+                    max="3"
+                    step="0.01"
+                    value={zoom}
+                    onChange={(event) => setZoom(Number(event.target.value))}
+                  />
+                </label>
+                <p>
+                  O frame final precisa ficar em 3x4. Ajuste o rosto e o tronco dentro do
+                  quadro antes de continuar.
+                </p>
+              </div>
+
+              <div className="cropper-actions">
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={skipCrop}
+                  disabled={isSavingCrop}
+                >
+                  Pular imagem
+                </button>
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={applyCrop}
+                  disabled={isSavingCrop || !croppedAreaPixels}
+                >
+                  {isSavingCrop ? "Aplicando..." : "Aplicar enquadramento"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
