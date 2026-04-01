@@ -639,6 +639,8 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
     ? ACTIVITY_VERBS[activeOperation][activityTick % ACTIVITY_VERBS[activeOperation].length]
     : null;
   const liveProgressText = progressText || (liveVerb ? `${liveVerb}...` : null);
+  const pendingResultUploads = uploads.filter((upload) => !resultsByUpload.has(upload.id));
+  const generationInFlight = isGenerating || uploads.some((upload) => upload.generationStatus === "processing");
 
   return (
     <main className="page-shell">
@@ -872,19 +874,23 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
             )}
           </button>
           <div className="progress-stack">
-            <p className={`progress-line ${activeOperation ? "active" : ""}`}>
-              {activeOperation ? (
+            <p className={`progress-line ${generationInFlight ? "active" : ""}`}>
+              {generationInFlight ? (
                 <span className="live-progress">
                   <span className="live-spinner" aria-hidden="true" />
-                  {liveProgressText}
+                  {liveProgressText || "Gerando com a OpenAI..."}
                 </span>
+              ) : isPreparingFiles || isUploading ? (
+                "As fotos salvas entram no lote acima."
               ) : pendingCropCount ? (
                 "Ajuste as fotos fora de 3x4."
+              ) : pendingResultUploads.length ? (
+                "As fotos prontas para gerar aparecem abaixo como fila."
               ) : (
                 "As geradas aparecem abaixo."
               )}
             </p>
-            {activeOperation ? (
+            {generationInFlight ? (
               <div className="loading-track" aria-hidden="true">
                 <span className="loading-bar" />
               </div>
@@ -911,8 +917,9 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
         <p className="results-note">Todas as imagens geradas aparecem aqui e ficam salvas.</p>
 
         <div className="results-grid">
-          {results.length ? (
-            results.map((result) => {
+          {results.length || pendingResultUploads.length ? (
+            <>
+              {results.map((result) => {
               const selected = selectedResultIds.includes(result.id);
 
               return (
@@ -948,7 +955,52 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
                   </div>
                 </article>
               );
-            })
+              })}
+              {pendingResultUploads.map((upload) => (
+                <article className="result-card result-card-placeholder" key={`pending-${upload.id}`}>
+                  <div className="result-image">
+                    <Image
+                      alt={upload.fileName}
+                      fill
+                      sizes="(max-width: 900px) 100vw, 420px"
+                      src={upload.imageUrl}
+                      unoptimized
+                    />
+                    <div className="result-image-overlay">
+                      {upload.generationStatus === "processing" ? (
+                        <span className="live-progress">
+                          <span className="live-spinner" aria-hidden="true" />
+                          Gerando
+                        </span>
+                      ) : upload.generationStatus === "error" ? (
+                        <span>Falha</span>
+                      ) : !isThreeByFour(upload.width, upload.height) ? (
+                        <span>Ajuste 3x4</span>
+                      ) : (
+                        <span>Na fila</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="result-meta">
+                    <strong>{upload.fileName}</strong>
+                    <span>
+                      {upload.generationStatus === "processing"
+                        ? "Processando na OpenAI"
+                        : upload.generationStatus === "error"
+                          ? "Falha ao gerar"
+                          : !isThreeByFour(upload.width, upload.height)
+                            ? "Aguardando ajuste"
+                            : "Aguardando geracao"}
+                    </span>
+                  </div>
+                  <div className="result-actions">
+                    <button className="ghost-button" type="button" disabled>
+                      {upload.generationStatus === "processing" ? "Gerando..." : "Aguardando"}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </>
           ) : (
             <div className="empty-state results-empty">
               <p>Nenhuma imagem gerada ainda.</p>

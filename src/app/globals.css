@@ -307,6 +307,24 @@ img {
   object-fit: cover;
 }
 
+.result-image-overlay {
+  position: absolute;
+  inset: auto 14px 14px 14px;
+  display: flex;
+  justify-content: center;
+}
+
+.result-image-overlay span {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255, 251, 244, 0.92);
+  border: 1px solid rgba(20, 32, 25, 0.08);
+  color: var(--text);
+}
+
 .upload-meta,
 .result-meta {
   display: flex;
@@ -423,6 +441,11 @@ img {
 .status-copy.error {
   color: var(--danger);
   background: rgba(165, 45, 45, 0.1);
+}
+
+.result-card-placeholder {
+  border-style: dashed;
+  background: linear-gradient(180deg, rgba(255, 250, 242, 0.98), rgba(245, 239, 230, 0.92));
 }
 
 .action-row {
