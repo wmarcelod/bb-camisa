@@ -11,6 +11,7 @@ import {
 } from "@/lib/server/openai-image";
 import { ensureServerSession, touchSession } from "@/lib/server/session";
 import {
+  createOpenAiApiLog,
   getUploadForGeneration,
   markUploadError,
   markUploadProcessing,
@@ -72,6 +73,7 @@ export async function POST(request: Request) {
   const openAiForm = new FormData();
   const requestId = crypto.randomUUID();
   const settings = await getGenerationSettings();
+  const settingsJson = buildSettingsSnapshot(settings);
   await markUploadProcessing(sessionId, uploadId);
 
   openAiForm.append(
@@ -115,6 +117,18 @@ export async function POST(request: Request) {
     if (!openAiResponse.ok) {
       const message = payload.error?.message || "Falha ao gerar a imagem na OpenAI.";
       await markUploadError(sessionId, uploadId, message);
+      await createOpenAiApiLog({
+        requestId: upstreamRequestId,
+        sessionId,
+        uploadId,
+        originalName: upload.fileName,
+        responseStatus: openAiResponse.status,
+        success: false,
+        errorMessage: message,
+        usageJson: payload.usage ? JSON.stringify(payload.usage) : null,
+        settingsJson,
+        estimatedCostUsd: calculateImageCostUsd(settings.model, payload.usage),
+      });
 
       return json(
         {
@@ -129,6 +143,18 @@ export async function POST(request: Request) {
 
     if (!imageBase64) {
       await markUploadError(sessionId, uploadId, "A OpenAI respondeu sem imagem renderizada.");
+      await createOpenAiApiLog({
+        requestId: upstreamRequestId,
+        sessionId,
+        uploadId,
+        originalName: upload.fileName,
+        responseStatus: 502,
+        success: false,
+        errorMessage: "A OpenAI respondeu sem imagem renderizada.",
+        usageJson: payload.usage ? JSON.stringify(payload.usage) : null,
+        settingsJson,
+        estimatedCostUsd: calculateImageCostUsd(settings.model, payload.usage),
+      });
 
       return json(
         {
@@ -149,7 +175,20 @@ export async function POST(request: Request) {
       mimeType: `image/${settings.outputFormat}`,
       requestId: upstreamRequestId,
       usageJson: payload.usage ? JSON.stringify(payload.usage) : null,
-      settingsJson: buildSettingsSnapshot(settings),
+      settingsJson,
+      estimatedCostUsd,
+    });
+    await createOpenAiApiLog({
+      requestId: upstreamRequestId,
+      sessionId,
+      uploadId,
+      resultId: result.id,
+      originalName: upload.fileName,
+      fileName: outputFilename,
+      responseStatus: openAiResponse.status,
+      success: true,
+      usageJson: payload.usage ? JSON.stringify(payload.usage) : null,
+      settingsJson,
       estimatedCostUsd,
     });
     await touchSession(sessionId);
@@ -162,6 +201,16 @@ export async function POST(request: Request) {
     const message =
       error instanceof Error ? error.message : "Falha inesperada ao gerar a imagem.";
     await markUploadError(sessionId, uploadId, message);
+    await createOpenAiApiLog({
+      requestId,
+      sessionId,
+      uploadId,
+      originalName: upload.fileName,
+      responseStatus: 500,
+      success: false,
+      errorMessage: message,
+      settingsJson,
+    });
 
     return json({ error: message, requestId }, { status: 500 });
   }

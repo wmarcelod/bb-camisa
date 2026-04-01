@@ -25,17 +25,21 @@ type DashboardItem = {
   hasRealCost: boolean;
 };
 
-type LedgerItem = {
+type ApiLogItem = {
   id: string;
-  resultId: string;
-  fileName: string;
-  originalName: string | null;
-  estimatedCostUsd: number | null;
   requestId: string | null;
+  sessionId: string;
+  uploadId: string | null;
+  resultId: string | null;
+  originalName: string | null;
+  fileName: string | null;
+  estimatedCostUsd: number | null;
   createdAt: string;
-  deletedAt: string | null;
+  responseStatus: number | null;
+  success: boolean;
+  errorMessage: string | null;
   settings: GenerationSettings | null;
-  status: "active" | "deleted";
+  source: "log" | "legacy-active" | "legacy-deleted";
 };
 
 type EstimateBasis = {
@@ -94,7 +98,7 @@ type DashboardPayload = {
     estimatedTotal: string;
   };
   items: DashboardItem[];
-  ledger: LedgerItem[];
+  apiLog: ApiLogItem[];
 };
 
 type CollectionDashboardProps = {
@@ -862,35 +866,47 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
               <div className="admin-card-header">
                 <div>
                   <p className="eyebrow">Log</p>
-                  <h3>Custos por imagem</h3>
+                  <h3>Uso da API</h3>
                 </div>
               </div>
 
-              {data?.ledger.length ? (
-                <div className="admin-ledger-list">
-                  {data.ledger.map((entry) => (
-                    <article className="admin-ledger-row" key={entry.id}>
-                      <div className="admin-ledger-main">
-                        <strong>{entry.originalName || entry.fileName}</strong>
-                        <span>{formatSettingsLine(entry.settings)}</span>
-                        <small>
-                          {formatTimestamp(entry.createdAt)}
-                          {entry.deletedAt
-                            ? ` | removida em ${formatTimestamp(entry.deletedAt)}`
-                            : ""}
-                        </small>
-                      </div>
-                      <div className="admin-ledger-side">
-                        <strong>{formatUsd(entry.estimatedCostUsd)}</strong>
-                        <span>{entry.status === "deleted" ? "Removida" : "Ativa"}</span>
-                      </div>
-                    </article>
-                  ))}
+              {data?.apiLog.length ? (
+                <div className="admin-log-table-wrap">
+                  <table className="admin-log-table">
+                    <thead>
+                      <tr>
+                        <th>Data</th>
+                        <th>Arquivo</th>
+                        <th>Status</th>
+                        <th>Custo</th>
+                        <th>Configuracao</th>
+                        <th>Request</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.apiLog.map((entry) => (
+                        <tr key={entry.id}>
+                          <td>{formatTimestamp(entry.createdAt)}</td>
+                          <td>{entry.originalName || entry.fileName || "-"}</td>
+                          <td>
+                            {entry.success
+                              ? entry.source === "legacy-deleted"
+                                ? "Removida"
+                                : "Sucesso"
+                              : `Erro${entry.responseStatus ? ` ${entry.responseStatus}` : ""}`}
+                          </td>
+                          <td>{formatUsd(entry.estimatedCostUsd)}</td>
+                          <td>{formatSettingsLine(entry.settings)}</td>
+                          <td>{entry.requestId || entry.errorMessage || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <div className="empty-state results-empty">
-                  <p>Nenhum custo no log.</p>
-                  <span>As geracoes com custo salvo aparecem aqui.</span>
+                  <p>Nenhum uso no log.</p>
+                  <span>As chamadas da OpenAI aparecem aqui.</span>
                 </div>
               )}
             </div>

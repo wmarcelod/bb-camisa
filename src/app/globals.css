@@ -865,35 +865,34 @@ img {
   background: var(--surface-strong);
 }
 
-.admin-ledger-list {
-  display: grid;
-  gap: 10px;
-}
-
-.admin-ledger-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: start;
-  padding: 14px 16px;
+.admin-log-table-wrap {
+  overflow-x: auto;
   border-radius: 18px;
-  background: rgba(245, 239, 230, 0.52);
+  border: 1px solid rgba(20, 32, 25, 0.08);
 }
 
-.admin-ledger-main,
-.admin-ledger-side {
-  display: grid;
-  gap: 4px;
+.admin-log-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  background: rgba(245, 239, 230, 0.36);
 }
 
-.admin-ledger-main span,
-.admin-ledger-main small,
-.admin-ledger-side span {
+.admin-log-table th,
+.admin-log-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(20, 32, 25, 0.08);
+  text-align: left;
+  vertical-align: top;
+}
+
+.admin-log-table th {
+  font-family: var(--font-heading), sans-serif;
+  font-size: 0.9rem;
+}
+
+.admin-log-table td {
   color: var(--muted);
-}
-
-.admin-ledger-side {
-  justify-items: end;
 }
 
 .admin-gallery-toolbar {

@@ -76,6 +76,23 @@ export type AdminCostLedgerItem = {
   status: "active" | "deleted";
 };
 
+export type AdminApiLogItem = {
+  id: string;
+  requestId: string | null;
+  sessionId: string;
+  uploadId: string | null;
+  resultId: string | null;
+  originalName: string | null;
+  fileName: string | null;
+  createdAt: string;
+  responseStatus: number | null;
+  success: boolean;
+  errorMessage: string | null;
+  estimatedCostUsd: number | null;
+  settings: GenerationSettings | null;
+  source: "log" | "legacy-active" | "legacy-deleted";
+};
+
 type UploadRow = {
   id: string;
   original_name: string;
@@ -170,6 +187,23 @@ type AdminCostLedgerRow = {
   status: "active" | "deleted";
 };
 
+type AdminApiLogRow = {
+  id: string;
+  request_id: string | null;
+  session_id: string;
+  upload_id: string | null;
+  result_id: string | null;
+  original_name: string | null;
+  file_name: string | null;
+  created_at: string;
+  response_status: number | null;
+  success: number;
+  error_message: string | null;
+  estimated_cost_usd: number | null;
+  settings_json: string | null;
+  source: "log" | "legacy-active" | "legacy-deleted";
+};
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -210,6 +244,23 @@ function ensureRepositorySchema(database: Awaited<ReturnType<typeof getDatabase>
       created_at TEXT NOT NULL,
       deleted_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS openai_api_log (
+      id TEXT PRIMARY KEY,
+      request_id TEXT,
+      session_id TEXT NOT NULL,
+      upload_id TEXT,
+      result_id TEXT,
+      original_name TEXT,
+      file_name TEXT,
+      response_status INTEGER,
+      success INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT,
+      usage_json TEXT,
+      settings_json TEXT,
+      estimated_cost_usd REAL,
+      created_at TEXT NOT NULL
+    );
   `);
 
   ensureColumn(database, "result_cost_log", "request_id", "TEXT");
@@ -218,6 +269,20 @@ function ensureRepositorySchema(database: Awaited<ReturnType<typeof getDatabase>
   ensureColumn(database, "result_cost_log", "estimated_cost_usd", "REAL");
   ensureColumn(database, "result_cost_log", "created_at", "TEXT");
   ensureColumn(database, "result_cost_log", "deleted_at", "TEXT");
+
+  ensureColumn(database, "openai_api_log", "request_id", "TEXT");
+  ensureColumn(database, "openai_api_log", "session_id", "TEXT");
+  ensureColumn(database, "openai_api_log", "upload_id", "TEXT");
+  ensureColumn(database, "openai_api_log", "result_id", "TEXT");
+  ensureColumn(database, "openai_api_log", "original_name", "TEXT");
+  ensureColumn(database, "openai_api_log", "file_name", "TEXT");
+  ensureColumn(database, "openai_api_log", "response_status", "INTEGER");
+  ensureColumn(database, "openai_api_log", "success", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(database, "openai_api_log", "error_message", "TEXT");
+  ensureColumn(database, "openai_api_log", "usage_json", "TEXT");
+  ensureColumn(database, "openai_api_log", "settings_json", "TEXT");
+  ensureColumn(database, "openai_api_log", "estimated_cost_usd", "REAL");
+  ensureColumn(database, "openai_api_log", "created_at", "TEXT");
 }
 
 function getExtension(filename: string, mimeType: string) {
@@ -617,6 +682,49 @@ export async function saveGenerationResult(params: {
   return buildResultRecord(result);
 }
 
+export async function createOpenAiApiLog(params: {
+  requestId: string | null;
+  sessionId: string;
+  uploadId?: string | null;
+  resultId?: string | null;
+  originalName?: string | null;
+  fileName?: string | null;
+  responseStatus?: number | null;
+  success: boolean;
+  errorMessage?: string | null;
+  usageJson?: string | null;
+  settingsJson?: string | null;
+  estimatedCostUsd?: number | null;
+}) {
+  const database = await getDatabase();
+  ensureRepositorySchema(database);
+  const timestamp = nowIso();
+
+  database
+    .prepare(
+      `INSERT INTO openai_api_log (
+         id, request_id, session_id, upload_id, result_id, original_name, file_name,
+         response_status, success, error_message, usage_json, settings_json, estimated_cost_usd, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      crypto.randomUUID(),
+      params.requestId ?? null,
+      params.sessionId,
+      params.uploadId ?? null,
+      params.resultId ?? null,
+      params.originalName ?? null,
+      params.fileName ?? null,
+      params.responseStatus ?? null,
+      params.success ? 1 : 0,
+      params.errorMessage ?? null,
+      params.usageJson ?? null,
+      params.settingsJson ?? null,
+      params.estimatedCostUsd ?? null,
+      timestamp,
+    );
+}
+
 export async function deleteResultByUpload(sessionId: string, uploadId: string) {
   const database = await getDatabase();
   ensureRepositorySchema(database);
@@ -1012,6 +1120,103 @@ export async function listAdminCostLedger() {
     settings: parseJson<GenerationSettings>(row.settings_json),
     status: row.status,
   })) as AdminCostLedgerItem[];
+}
+
+export async function listAdminApiLog() {
+  const database = await getDatabase();
+  ensureRepositorySchema(database);
+  const rows = database
+    .prepare(
+      `SELECT * FROM (
+         SELECT
+           openai_api_log.id,
+           openai_api_log.request_id,
+           openai_api_log.session_id,
+           openai_api_log.upload_id,
+           openai_api_log.result_id,
+           openai_api_log.original_name,
+           openai_api_log.file_name,
+           openai_api_log.created_at,
+           openai_api_log.response_status,
+           openai_api_log.success,
+           openai_api_log.error_message,
+           openai_api_log.estimated_cost_usd,
+           openai_api_log.settings_json,
+           'log' AS source
+         FROM openai_api_log
+
+         UNION ALL
+
+         SELECT
+           results.id AS id,
+           results.request_id,
+           results.session_id,
+           results.upload_id,
+           results.id AS result_id,
+           uploads.original_name,
+           results.file_name,
+           results.created_at,
+           200 AS response_status,
+           1 AS success,
+           NULL AS error_message,
+           results.estimated_cost_usd,
+           results.settings_json,
+           'legacy-active' AS source
+         FROM results
+         LEFT JOIN uploads ON uploads.id = results.upload_id
+         WHERE results.request_id IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1
+             FROM openai_api_log
+             WHERE openai_api_log.result_id = results.id
+           )
+
+         UNION ALL
+
+         SELECT
+           result_cost_log.id AS id,
+           result_cost_log.request_id,
+           result_cost_log.session_id,
+           result_cost_log.upload_id,
+           result_cost_log.result_id,
+           uploads.original_name,
+           result_cost_log.file_name,
+           result_cost_log.created_at,
+           200 AS response_status,
+           1 AS success,
+           NULL AS error_message,
+           result_cost_log.estimated_cost_usd,
+           result_cost_log.settings_json,
+           'legacy-deleted' AS source
+         FROM result_cost_log
+         LEFT JOIN uploads ON uploads.id = result_cost_log.upload_id
+         WHERE result_cost_log.request_id IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1
+             FROM openai_api_log
+             WHERE openai_api_log.result_id = result_cost_log.result_id
+           )
+       )
+       ORDER BY created_at DESC`,
+    )
+    .all() as AdminApiLogRow[];
+
+  return rows.map((row) => ({
+    id: row.id,
+    requestId: row.request_id,
+    sessionId: row.session_id,
+    uploadId: row.upload_id,
+    resultId: row.result_id,
+    originalName: row.original_name,
+    fileName: row.file_name,
+    createdAt: row.created_at,
+    responseStatus: row.response_status,
+    success: Boolean(row.success),
+    errorMessage: row.error_message,
+    estimatedCostUsd: row.estimated_cost_usd,
+    settings: parseJson<GenerationSettings>(row.settings_json),
+    source: row.source,
+  })) as AdminApiLogItem[];
 }
 
 export async function buildCollectionZip(sessionId?: string) {
