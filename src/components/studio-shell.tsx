@@ -760,7 +760,7 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
             {isPreparingFiles || isUploading ? (
               <span className="button-content">
                 <span className="button-spinner" aria-hidden="true" />
-                {liveVerb ? `${liveVerb}...` : "Processando..."}
+                Enviando...
               </span>
             ) : (
               "Escolher imagens"
@@ -867,7 +867,7 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
             {isGenerating ? (
               <span className="button-content">
                 <span className="button-spinner" aria-hidden="true" />
-                {liveVerb ? `${liveVerb}...` : "Gerando..."}
+                Gerando...
               </span>
             ) : (
               "Gerar lote"
