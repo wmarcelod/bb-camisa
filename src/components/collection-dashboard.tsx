@@ -52,6 +52,7 @@ type DashboardPayload = {
     inputFidelity: Array<GenerationSettings["inputFidelity"]>;
     moderation: Array<GenerationSettings["moderation"]>;
   };
+  inputFidelityOptionsByModel: Record<string, Array<GenerationSettings["inputFidelity"]>>;
   estimateBasisByModel: Record<string, EstimateBasis>;
   priceTables: Record<string, PriceTable>;
   summary: {
@@ -365,6 +366,8 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
   const previewBasis =
     (draft && data?.estimateBasisByModel[draft.model]) ||
     (data ? data.estimateBasisByModel[data.settings.model] : null);
+  const inputFidelityOptions =
+    (draft && data?.inputFidelityOptionsByModel[draft.model]) || data?.options.inputFidelity || [];
   const previewEstimatedPerImageUsd =
     draft && data
       ? calculateEstimatedImageCost(draft, previewBasis, data.priceTables)
@@ -422,9 +425,19 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                     <select
                       value={draft.model}
                       onFocus={() => void refreshModelList()}
-                      onChange={(event) =>
-                        setDraft({ ...draft, model: event.target.value })
-                      }
+                      onChange={(event) => {
+                        const nextModel = event.target.value;
+                        const nextInputFidelity =
+                          data.inputFidelityOptionsByModel[nextModel]?.includes(draft.inputFidelity)
+                            ? draft.inputFidelity
+                            : (data.inputFidelityOptionsByModel[nextModel]?.[0] ?? "low");
+
+                        setDraft({
+                          ...draft,
+                          model: nextModel,
+                          inputFidelity: nextInputFidelity,
+                        });
+                      }}
                     >
                       {data.models.map((model) => (
                         <option key={model} value={model}>
@@ -521,7 +534,7 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                         })
                       }
                     >
-                      {data.options.inputFidelity.map((value) => (
+                      {inputFidelityOptions.map((value) => (
                         <option key={value} value={value}>
                           {value}
                         </option>

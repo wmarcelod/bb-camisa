@@ -2,6 +2,7 @@ import { isAuthorizedAdminRequest, getAdminTokenFromUrl } from "@/lib/server/adm
 import {
   estimateImageCostUsd,
   getDynamicImageParameterOptions,
+  getInputFidelityOptionsForModel,
   getGenerationSettings,
   getImagePricingTables,
   type GenerationSettings,
@@ -65,6 +66,9 @@ async function buildDashboardResponse(token: string | null, refreshModels = fals
   const estimateBasisByModel = Object.fromEntries(
     models.map((model) => [model, buildAveragesForSettings(items, { ...settings, model })]),
   );
+  const inputFidelityOptionsByModel = Object.fromEntries(
+    models.map((model) => [model, getInputFidelityOptionsForModel(model)]),
+  );
   const itemsWithCosts = items.map((item) => ({
     ...item,
     imageUrl: token ? `${item.imageUrl}?token=${encodeURIComponent(token)}` : item.imageUrl,
@@ -84,6 +88,7 @@ async function buildDashboardResponse(token: string | null, refreshModels = fals
     settings,
     models,
     options,
+    inputFidelityOptionsByModel,
     estimateBasisByModel,
     priceTables: getImagePricingTables(models),
     summary: {

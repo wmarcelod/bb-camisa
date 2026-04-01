@@ -39,6 +39,10 @@ export type PriceTable = {
   perImage: Record<"low" | "medium" | "high", Record<"1024x1024" | "1024x1536" | "1536x1024", number>>;
 };
 
+type ModelCapability = {
+  inputFidelity: Array<GenerationSettings["inputFidelity"]>;
+};
+
 type ModelApiResponse = {
   data?: Array<{
     id?: string;
@@ -163,6 +167,18 @@ const PRICE_TABLES: Record<string, PriceTable> = {
   },
 };
 
+const MODEL_CAPABILITIES: Record<string, ModelCapability> = {
+  "gpt-image-1.5": {
+    inputFidelity: ["high", "low"],
+  },
+  "gpt-image-1": {
+    inputFidelity: ["high", "low"],
+  },
+  "gpt-image-1-mini": {
+    inputFidelity: ["low"],
+  },
+};
+
 declare global {
   var __bbCamisaModelCache:
     | {
@@ -200,6 +216,12 @@ function normalizeModelId(model: string) {
 
   const snapshotPrefix = Object.keys(PRICE_TABLES).find((candidate) => model.startsWith(candidate));
   return snapshotPrefix || model;
+}
+
+function getModelCapability(model: string) {
+  return MODEL_CAPABILITIES[normalizeModelId(model)] || {
+    inputFidelity: ["high", "low"] as Array<GenerationSettings["inputFidelity"]>,
+  };
 }
 
 function parseSettingsJson(value: string | null | undefined) {
@@ -254,8 +276,12 @@ export function sanitizeGenerationSettings(input?: Partial<GenerationSettings> |
 
   next.outputCompression = Math.max(0, Math.min(100, Math.round(next.outputCompression)));
 
-  if (!["high", "low"].includes(next.inputFidelity)) {
+  if (!getModelCapability(next.model).inputFidelity.includes(next.inputFidelity)) {
     next.inputFidelity = DEFAULT_GENERATION_SETTINGS.inputFidelity;
+  }
+
+  if (!getModelCapability(next.model).inputFidelity.includes(next.inputFidelity)) {
+    next.inputFidelity = getModelCapability(next.model).inputFidelity[0];
   }
 
   if (!["auto", "low"].includes(next.moderation)) {
@@ -346,6 +372,10 @@ export function getDynamicImageParameterOptions() {
     inputFidelity: ["high", "low"] as const,
     moderation: ["auto", "low"] as const,
   };
+}
+
+export function getInputFidelityOptionsForModel(model: string) {
+  return getModelCapability(model).inputFidelity;
 }
 
 export function getImagePricingTables(models?: string[]) {
