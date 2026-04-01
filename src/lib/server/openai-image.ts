@@ -60,9 +60,10 @@ const DEFAULT_GENERATION_SETTINGS: GenerationSettings = {
   moderation: "auto",
 };
 
+const MULTI_IMAGE_EDIT_MODEL_PREFIXES = ["gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"] as const;
+
 const FALLBACK_IMAGE_MODELS = [
   "gpt-image-1.5",
-  "chatgpt-image-latest",
   "gpt-image-1",
   "gpt-image-1-mini",
 ];
@@ -187,7 +188,9 @@ function sortModels(models: string[]) {
 }
 
 function isSupportedImageEditModel(model: string) {
-  return model.startsWith("gpt-image") || model.startsWith("chatgpt-image");
+  return MULTI_IMAGE_EDIT_MODEL_PREFIXES.some(
+    (prefix) => model === prefix || model.startsWith(`${prefix}-`),
+  );
 }
 
 function normalizeModelId(model: string) {
