@@ -54,6 +54,14 @@ type CropCandidate = {
   height: number;
 };
 
+const ACTIVITY_VERBS = {
+  preparing: ["Preparando", "Lendo", "Organizando"],
+  uploading: ["Salvando", "Enviando", "Gravando"],
+  generating: ["Gerando", "Processando", "Finalizando"],
+  cropping: ["Ajustando", "Salvando", "Atualizando"],
+  marking: ["Marcando", "Salvando", "Atualizando"],
+} as const;
+
 function revokeCandidate(candidate: CropCandidate | null) {
   if (candidate) {
     URL.revokeObjectURL(candidate.previewUrl);
@@ -82,6 +90,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [progressText, setProgressText] = useState<string | null>(null);
+  const [activityTick, setActivityTick] = useState(0);
 
   useEffect(() => {
     cropQueueRef.current = cropQueue;
@@ -103,6 +112,33 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
       revokeCandidate(activeCropRef.current);
     };
   }, []);
+
+  const activeOperation = isGenerating
+    ? "generating"
+    : isUploading
+      ? "uploading"
+      : isPreparingFiles
+        ? "preparing"
+        : isSavingCrop
+          ? "cropping"
+          : isSavingSelection
+            ? "marking"
+            : null;
+
+  useEffect(() => {
+    if (!activeOperation) {
+      setActivityTick(0);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setActivityTick((current) => current + 1);
+    }, 900);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [activeOperation]);
 
   async function refreshSession() {
     const response = await fetch("/api/session", {
@@ -600,6 +636,10 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
     (result) =>
       selectedResultIds.includes(result.id) && result.reviewStatus !== "kept",
   ).length;
+  const liveVerb = activeOperation
+    ? ACTIVITY_VERBS[activeOperation][activityTick % ACTIVITY_VERBS[activeOperation].length]
+    : null;
+  const liveProgressText = progressText || (liveVerb ? `${liveVerb}...` : null);
 
   return (
     <main className="page-shell">
@@ -700,11 +740,14 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
               onClick={openFilePicker}
               disabled={isPreparingFiles || isUploading || isGenerating}
             >
-              {isPreparingFiles
-                ? "Preparando..."
-                : isUploading
-                  ? "Salvando..."
-                  : "Escolher imagens"}
+              {isPreparingFiles || isUploading ? (
+                <span className="button-content">
+                  <span className="button-spinner" aria-hidden="true" />
+                  {liveVerb ? `${liveVerb}...` : "Processando..."}
+                </span>
+              ) : (
+                "Escolher imagens"
+              )}
             </button>
           </div>
 
@@ -796,14 +839,34 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
                 pendingCropCount > 0
               }
             >
-              {isGenerating ? "Gerando..." : "Gerar lote"}
+              {isGenerating ? (
+                <span className="button-content">
+                  <span className="button-spinner" aria-hidden="true" />
+                  {liveVerb ? `${liveVerb}...` : "Gerando..."}
+                </span>
+              ) : (
+                "Gerar lote"
+              )}
             </button>
-            <p className="progress-line">
-              {progressText ||
-                (pendingCropCount
-                  ? "Ajuste as fotos fora de 3x4."
-                  : "As geradas aparecem abaixo.")}
-            </p>
+            <div className="progress-stack">
+              <p className={`progress-line ${activeOperation ? "active" : ""}`}>
+                {activeOperation ? (
+                  <span className="live-progress">
+                    <span className="live-spinner" aria-hidden="true" />
+                    {liveProgressText}
+                  </span>
+                ) : pendingCropCount ? (
+                  "Ajuste as fotos fora de 3x4."
+                ) : (
+                  "As geradas aparecem abaixo."
+                )}
+              </p>
+              {activeOperation ? (
+                <div className="loading-track" aria-hidden="true">
+                  <span className="loading-bar" />
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
 

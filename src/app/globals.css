@@ -359,6 +359,27 @@ img {
   font-family: var(--font-heading), sans-serif;
 }
 
+.button-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.button-spinner,
+.live-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: currentColor;
+  animation: spin 0.85s linear infinite;
+}
+
+.live-spinner {
+  border-color: rgba(20, 32, 25, 0.18);
+  border-top-color: var(--accent);
+}
+
 .ghost-button,
 .icon-button {
   padding: 12px 18px;
@@ -412,6 +433,40 @@ img {
   align-items: center;
   gap: 14px;
   margin-top: 20px;
+}
+
+.progress-stack {
+  display: grid;
+  gap: 8px;
+  min-width: min(100%, 420px);
+  flex: 1;
+}
+
+.progress-line.active {
+  color: var(--text);
+}
+
+.live-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.loading-track {
+  position: relative;
+  overflow: hidden;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(20, 32, 25, 0.08);
+}
+
+.loading-bar {
+  position: absolute;
+  inset: 0 auto 0 -28%;
+  width: 28%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(21, 84, 63, 0.12), rgba(21, 84, 63, 0.85));
+  animation: progress-slide 1.3s ease-in-out infinite;
 }
 
 .progress-line,
@@ -640,6 +695,22 @@ img {
   flex-wrap: wrap;
   justify-content: end;
   gap: 12px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes progress-slide {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(460%);
+  }
 }
 
 @media (max-width: 1100px) {
