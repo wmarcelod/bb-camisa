@@ -817,6 +817,12 @@ img {
   gap: 12px;
 }
 
+.admin-gallery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .cropper-overlay {
   position: fixed;
   inset: 0;
@@ -1022,15 +1028,23 @@ img {
     align-items: start;
   }
 
+  .admin-gallery-actions {
+    flex-direction: column;
+  }
+
   .filter-group,
-  .admin-actions {
+  .admin-actions,
+  .admin-gallery-actions {
     width: 100%;
   }
 
   .filter-group .ghost-button,
   .filter-group .primary-button,
   .admin-actions .ghost-button,
-  .admin-actions .primary-button {
+  .admin-actions .primary-button,
+  .admin-gallery-actions .ghost-button,
+  .admin-gallery-actions .primary-button,
+  .admin-gallery-actions .icon-button {
     width: 100%;
   }
 

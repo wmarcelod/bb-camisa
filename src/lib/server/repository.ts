@@ -555,6 +555,53 @@ export async function updateResultSelection(params: {
   }
 }
 
+export async function updateAdminResultReviewStatus(
+  resultId: string,
+  reviewStatus: ResultRecord["reviewStatus"],
+) {
+  const database = await getDatabase();
+  const timestamp = nowIso();
+  const row = database
+    .prepare("SELECT id FROM results WHERE id = ?")
+    .get(resultId) as { id: string } | undefined;
+
+  if (!row) {
+    return false;
+  }
+
+  database
+    .prepare("UPDATE results SET review_status = ?, updated_at = ? WHERE id = ?")
+    .run(reviewStatus, timestamp, resultId);
+
+  return true;
+}
+
+export async function deleteAdminResult(resultId: string) {
+  const database = await getDatabase();
+  const timestamp = nowIso();
+  const row = database
+    .prepare(
+      "SELECT id, session_id, upload_id, file_path FROM results WHERE id = ?",
+    )
+    .get(resultId) as
+    | { id: string; session_id: string; upload_id: string; file_path: string }
+    | undefined;
+
+  if (!row) {
+    return false;
+  }
+
+  await deleteFileIfExists(row.file_path);
+  database.prepare("DELETE FROM results WHERE id = ?").run(row.id);
+  database
+    .prepare(
+      "UPDATE uploads SET generation_status = 'uploaded', error_message = NULL, updated_at = ? WHERE id = ? AND session_id = ?",
+    )
+    .run(timestamp, row.upload_id, row.session_id);
+
+  return true;
+}
+
 export async function listCollectionSessions() {
   const database = await getDatabase();
   return database

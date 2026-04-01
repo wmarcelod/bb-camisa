@@ -85,6 +85,10 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
   const [filter, setFilter] = useState<"all" | "kept" | "pending">("all");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [busyResult, setBusyResult] = useState<{
+    id: string;
+    action: "keep" | "pending" | "delete";
+  } | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   async function loadDashboard() {
@@ -172,6 +176,45 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
       setFeedback(error instanceof Error ? error.message : "Nao foi possivel salvar.");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function runResultAction(
+    resultId: string,
+    action: "keep" | "pending" | "delete",
+  ) {
+    setBusyResult({ id: resultId, action });
+    setFeedback(null);
+
+    try {
+      const response = await fetch(`/api/admin/results?token=${encodeURIComponent(token)}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          resultId,
+          action,
+        }),
+      });
+      const payload = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Nao foi possivel atualizar.");
+      }
+
+      await loadDashboard();
+      setFeedback(
+        action === "delete"
+          ? "Imagem removida."
+          : action === "keep"
+            ? "Marcada como boa."
+            : "Voltou para pendente.",
+      );
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Nao foi possivel atualizar.");
+    } finally {
+      setBusyResult(null);
     }
   }
 
@@ -504,6 +547,36 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                           ? formatUsd(item.actualCostUsd)
                           : "Imagem antiga sem custo real salvo"}
                       </small>
+                    </div>
+                    <div className="admin-gallery-actions">
+                      <button
+                        className={item.reviewStatus === "kept" ? "primary-button" : "ghost-button"}
+                        type="button"
+                        disabled={busyResult?.id === item.id}
+                        onClick={() =>
+                          void runResultAction(
+                            item.id,
+                            item.reviewStatus === "kept" ? "pending" : "keep",
+                          )
+                        }
+                      >
+                        {busyResult?.id === item.id &&
+                        (busyResult.action === "keep" || busyResult.action === "pending")
+                          ? "Salvando..."
+                          : item.reviewStatus === "kept"
+                            ? "Boa"
+                            : "Marcar boa"}
+                      </button>
+                      <button
+                        className="icon-button"
+                        type="button"
+                        disabled={busyResult?.id === item.id}
+                        onClick={() => void runResultAction(item.id, "delete")}
+                      >
+                        {busyResult?.id === item.id && busyResult.action === "delete"
+                          ? "Removendo..."
+                          : "Remover"}
+                      </button>
                     </div>
                   </article>
                 ))}
