@@ -18,7 +18,7 @@ type DashboardItem = {
   id: string;
   fileName: string;
   imageUrl: string;
-  reviewStatus: "pending" | "kept";
+  reviewStatus: "pending" | "kept" | "rejected";
   createdAt: string;
   originalName: string;
   actualCostUsd: number | null;
@@ -74,6 +74,7 @@ type DashboardPayload = {
   summary: {
     resultCount: number;
     keptCount: number;
+    rejectedCount: number;
     trackedCount: number;
     legacyCount: number;
     exactSpentUsd: number;
@@ -166,14 +167,14 @@ function calculateEstimatedImageCost(
 export function CollectionDashboard({ token }: CollectionDashboardProps) {
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [draft, setDraft] = useState<GenerationSettings | null>(null);
-  const [filter, setFilter] = useState<"all" | "kept" | "pending">("all");
+  const [filter, setFilter] = useState<"all" | "kept" | "rejected" | "pending">("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshingModels, setIsRefreshingModels] = useState(false);
   const [busyResult, setBusyResult] = useState<{
     id: string;
-    action: "keep" | "pending" | "delete";
+    action: "keep" | "pending" | "reject" | "delete";
   } | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -307,7 +308,7 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
 
   async function runResultAction(
     resultId: string | string[],
-    action: "keep" | "pending" | "delete",
+    action: "keep" | "pending" | "reject" | "delete",
   ) {
     const targetIds = Array.isArray(resultId) ? resultId : [resultId];
 
@@ -346,6 +347,10 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
             ? targetIds.length > 1
               ? `${targetIds.length} imagem(ns) marcada(s) como boa.`
               : "Marcada como boa."
+            : action === "reject"
+              ? targetIds.length > 1
+                ? `${targetIds.length} imagem(ns) marcada(s) como ruim.`
+                : "Marcada como ruim."
             : targetIds.length > 1
               ? `${targetIds.length} imagem(ns) voltaram para pendente.`
               : "Voltou para pendente.",
@@ -388,7 +393,11 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
     }
 
     if (filter === "pending") {
-      return item.reviewStatus !== "kept";
+      return item.reviewStatus === "pending";
+    }
+
+    if (filter === "rejected") {
+      return item.reviewStatus === "rejected";
     }
 
     return true;
@@ -433,6 +442,10 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
           <article className="admin-stat-card">
             <span>Boas</span>
             <strong>{data?.summary.keptCount ?? 0}</strong>
+          </article>
+          <article className="admin-stat-card">
+            <span>Ruins</span>
+            <strong>{data?.summary.rejectedCount ?? 0}</strong>
           </article>
           <article className="admin-stat-card">
             <span>Gasto rastreado</span>
@@ -659,6 +672,13 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                 >
                   Pendentes
                 </button>
+                <button
+                  className={filter === "rejected" ? "primary-button" : "ghost-button"}
+                  type="button"
+                  onClick={() => setFilter("rejected")}
+                >
+                  Ruins
+                </button>
               </div>
               <span className="collection-meta-line">
                 {filteredItems?.length ?? 0} imagem(ns)
@@ -706,6 +726,14 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                     Pendentes
                   </button>
                   <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => void runResultAction(selectedIds, "reject")}
+                    disabled={Boolean(busyResult)}
+                  >
+                    Marcar ruins
+                  </button>
+                  <button
                     className="icon-button"
                     type="button"
                     onClick={() => void runResultAction(selectedIds, "delete")}
@@ -726,7 +754,7 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
               <div className="admin-gallery-grid">
                 {filteredItems.map((item) => (
                   <article
-                    className={`admin-gallery-card ${selectedIds.includes(item.id) ? "selected" : ""}`}
+                    className={`admin-gallery-card ${item.reviewStatus} ${selectedIds.includes(item.id) ? "selected" : ""}`}
                     key={item.id}
                   >
                     <div className="admin-gallery-image">
@@ -755,7 +783,13 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                     </div>
                     <div className="admin-gallery-meta">
                       <div className="admin-gallery-topline">
-                        <strong>{item.reviewStatus === "kept" ? "Boa" : "Pendente"}</strong>
+                        <strong>
+                          {item.reviewStatus === "kept"
+                            ? "Boa"
+                            : item.reviewStatus === "rejected"
+                              ? "Ruim"
+                              : "Pendente"}
+                        </strong>
                         <span>{item.hasRealCost ? "Custo real" : "Sem custo salvo"}</span>
                       </div>
                       <span>{item.originalName}</span>
@@ -784,6 +818,24 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                           : item.reviewStatus === "kept"
                             ? "Boa"
                             : "Marcar boa"}
+                      </button>
+                      <button
+                        className={item.reviewStatus === "rejected" ? "danger-button" : "ghost-button"}
+                        type="button"
+                        disabled={Boolean(busyResult)}
+                        onClick={() =>
+                          void runResultAction(
+                            item.id,
+                            item.reviewStatus === "rejected" ? "pending" : "reject",
+                          )
+                        }
+                      >
+                        {busyResult?.id === item.id &&
+                        (busyResult.action === "reject" || busyResult.action === "pending")
+                          ? "Salvando..."
+                          : item.reviewStatus === "rejected"
+                            ? "Ruim"
+                            : "Marcar ruim"}
                       </button>
                       <button
                         className="icon-button"

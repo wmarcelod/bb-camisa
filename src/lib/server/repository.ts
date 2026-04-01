@@ -29,7 +29,7 @@ export type ResultRecord = {
   uploadId: string;
   fileName: string;
   imageUrl: string;
-  reviewStatus: "pending" | "kept";
+  reviewStatus: "pending" | "kept" | "rejected";
   requestId: string | null;
   estimatedCostUsd: number | null;
   createdAt: string;
@@ -41,7 +41,7 @@ export type AdminGalleryItem = {
   uploadId: string;
   fileName: string;
   imageUrl: string;
-  reviewStatus: "pending" | "kept";
+  reviewStatus: "pending" | "kept" | "rejected";
   requestId: string | null;
   createdAt: string;
   originalName: string;
@@ -54,6 +54,7 @@ export type AdminGalleryItem = {
 export type AdminUsageSummary = {
   resultCount: number;
   keptCount: number;
+  rejectedCount: number;
   trackedCount: number;
   legacyCount: number;
   exactSpentUsd: number;
@@ -654,9 +655,10 @@ export async function deleteResultByUpload(sessionId: string, uploadId: string) 
 export async function updateResultSelection(params: {
   sessionId: string;
   keepIds: string[];
+  rejectIds: string[];
   deleteIds: string[];
 }) {
-  const { sessionId, keepIds, deleteIds } = params;
+  const { sessionId, keepIds, rejectIds, deleteIds } = params;
   const database = await getDatabase();
   ensureRepositorySchema(database);
   const timestamp = nowIso();
@@ -670,6 +672,17 @@ export async function updateResultSelection(params: {
          WHERE session_id = ? AND id IN (${placeholders})`,
       )
       .run(timestamp, sessionId, ...keepIds);
+  }
+
+  if (rejectIds.length) {
+    const placeholders = rejectIds.map(() => "?").join(", ");
+    database
+      .prepare(
+        `UPDATE results
+         SET review_status = 'rejected', updated_at = ?
+         WHERE session_id = ? AND id IN (${placeholders})`,
+      )
+      .run(timestamp, sessionId, ...rejectIds);
   }
 
   for (const resultId of deleteIds) {
@@ -870,6 +883,7 @@ export async function getAdminUsageSummary() {
 
   let resultCount = 0;
   let keptCount = 0;
+  let rejectedCount = 0;
   let trackedCount = 0;
   let exactSpentUsd = 0;
   let totalInputTextTokens = 0;
@@ -882,6 +896,8 @@ export async function getAdminUsageSummary() {
 
     if (row.review_status === "kept") {
       keptCount += 1;
+    } else if (row.review_status === "rejected") {
+      rejectedCount += 1;
     }
 
     if (typeof row.estimated_cost_usd === "number") {
@@ -932,6 +948,7 @@ export async function getAdminUsageSummary() {
   return {
     resultCount,
     keptCount,
+    rejectedCount,
     trackedCount,
     legacyCount: Math.max(0, resultCount - trackedCount),
     exactSpentUsd,

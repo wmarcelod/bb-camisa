@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const payload = (await request.json()) as {
     resultId?: string;
     resultIds?: string[];
-    action?: "keep" | "pending" | "delete" | "set-cost";
+    action?: "keep" | "pending" | "reject" | "delete" | "set-cost";
     costUsd?: number;
   };
   const resultIds = payload.resultIds?.filter(Boolean) || [];
@@ -70,7 +70,12 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, count: removedCount });
   }
 
-  const reviewStatus = payload.action === "keep" ? "kept" : "pending";
+  const reviewStatus =
+    payload.action === "keep"
+      ? "kept"
+      : payload.action === "reject"
+        ? "rejected"
+        : "pending";
   let updatedCount = 0;
 
   for (const resultId of targetIds) {

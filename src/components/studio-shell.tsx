@@ -33,7 +33,7 @@ type SessionResult = {
   uploadId: string;
   fileName: string;
   imageUrl: string;
-  reviewStatus: "pending" | "kept";
+  reviewStatus: "pending" | "kept" | "rejected";
   requestId: string | null;
   createdAt: string;
 };
@@ -74,7 +74,6 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
 
   const [uploads, setUploads] = useState<SessionUpload[]>([]);
   const [results, setResults] = useState<SessionResult[]>([]);
-  const [selectedResultIds, setSelectedResultIds] = useState<string[]>([]);
   const [cropQueue, setCropQueue] = useState<CropCandidate[]>([]);
   const [activeCrop, setActiveCrop] = useState<CropCandidate | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -83,7 +82,7 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSavingCrop, setIsSavingCrop] = useState(false);
-  const [isSavingSelection, setIsSavingSelection] = useState(false);
+  const [busyReviewResultId, setBusyReviewResultId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -120,7 +119,7 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
         ? "preparing"
         : isSavingCrop
           ? "cropping"
-          : isSavingSelection
+          : busyReviewResultId
             ? "marking"
             : null;
 
@@ -147,14 +146,6 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
 
     setUploads(payload.uploads);
     setResults(payload.results);
-    setSelectedResultIds((current) => {
-      const currentSet = new Set(current);
-      const next = payload.results
-        .filter((result) => result.reviewStatus === "kept" || currentSet.has(result.id))
-        .map((result) => result.id);
-
-      return Array.from(new Set(next));
-    });
   }
 
   useEffect(() => {
@@ -173,11 +164,6 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
 
         setUploads(payload.uploads);
         setResults(payload.results);
-        setSelectedResultIds(
-          payload.results
-            .filter((result) => result.reviewStatus === "kept")
-            .map((result) => result.id),
-        );
       } finally {
         if (isMounted) {
           setIsLoadingSession(false);
@@ -437,26 +423,11 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
     setActiveCrop(null);
   }
 
-  function toggleSelection(resultId: string) {
-    setSelectedResultIds((current) =>
-      current.includes(resultId)
-        ? current.filter((id) => id !== resultId)
-        : [...current, resultId],
-    );
-  }
-
-  async function saveSelectedResults() {
-    const keepIds = selectedResultIds.filter((id) => {
-      const result = results.find((entry) => entry.id === id);
-      return result && result.reviewStatus !== "kept";
-    });
-
-    if (!keepIds.length) {
-      setFeedback("Nenhum resultado novo selecionado.");
-      return;
-    }
-
-    setIsSavingSelection(true);
+  async function setResultReviewStatus(
+    resultId: string,
+    reviewStatus: "kept" | "rejected" | "pending",
+  ) {
+    setBusyReviewResultId(resultId);
 
     try {
       const response = await fetch("/api/results", {
@@ -465,7 +436,8 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          keepIds,
+          keepIds: reviewStatus === "kept" ? [resultId] : [],
+          rejectIds: reviewStatus === "rejected" ? [resultId] : [],
           deleteIds: [],
         }),
       });
@@ -476,13 +448,19 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
       }
 
       await refreshSession();
-      setFeedback("Marcadas.");
+      setFeedback(
+        reviewStatus === "kept"
+          ? "Marcada como boa."
+          : reviewStatus === "rejected"
+            ? "Marcada como ruim."
+            : "Voltou para pendente.",
+      );
     } catch (error) {
       setFeedback(
         error instanceof Error ? error.message : "Nao foi possivel marcar.",
       );
     } finally {
-      setIsSavingSelection(false);
+      setBusyReviewResultId(null);
     }
   }
 
@@ -504,7 +482,6 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
       return;
     }
 
-    setSelectedResultIds((current) => current.filter((id) => id !== resultId));
     await refreshSession();
   }
 
@@ -631,10 +608,7 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
   }
 
   const keptCount = results.filter((result) => result.reviewStatus === "kept").length;
-  const savableSelectionCount = results.filter(
-    (result) =>
-      selectedResultIds.includes(result.id) && result.reviewStatus !== "kept",
-  ).length;
+  const rejectedCount = results.filter((result) => result.reviewStatus === "rejected").length;
   const liveVerb = activeOperation
     ? ACTIVITY_VERBS[activeOperation][activityTick % ACTIVITY_VERBS[activeOperation].length]
     : null;
@@ -674,6 +648,10 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
             <div>
               <strong>Selecionadas</strong>
               <span>{keptCount}</span>
+            </div>
+            <div>
+              <strong>Ruins</strong>
+              <span>{rejectedCount}</span>
             </div>
             <div>
               <strong>Limite</strong>
@@ -774,6 +752,7 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
           <span>{uploads.length} no lote</span>
           <span>{results.length} geradas</span>
           <span>{keptCount} boas</span>
+          <span>{rejectedCount} ruins</span>
           <span>{pendingCropCount} pendente(s) 3x4</span>
         </div>
 
@@ -905,23 +884,14 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
             <p className="eyebrow">Saida</p>
             <h2>Resultados</h2>
           </div>
-          <button
-            className="primary-button"
-            type="button"
-            onClick={() => void saveSelectedResults()}
-            disabled={!savableSelectionCount || isSavingSelection}
-          >
-            {isSavingSelection ? "Marcando..." : `Marcar boas (${savableSelectionCount})`}
-          </button>
+          <span className="collection-meta-line">{keptCount} boas | {rejectedCount} ruins</span>
         </div>
-        <p className="results-note">Todas as imagens geradas aparecem aqui e ficam salvas.</p>
+        <p className="results-note">Classifique cada imagem como boa ou ruim. Ambas seguem visiveis para o admin.</p>
 
         <div className="results-grid">
           {results.length || pendingResultUploads.length ? (
             <>
               {results.map((result) => {
-              const selected = selectedResultIds.includes(result.id);
-
               return (
                 <article className={`result-card ${result.reviewStatus}`} key={result.id}>
                   <div className="result-image">
@@ -935,20 +905,54 @@ export function StudioShell({ openAiConfigured }: StudioShellProps) {
                   </div>
                   <div className="result-meta">
                     <strong>{result.fileName}</strong>
-                    <span>{result.reviewStatus === "kept" ? "Selecionada" : "Gerada"}</span>
+                    <span>
+                      {result.reviewStatus === "kept"
+                        ? "Boa"
+                        : result.reviewStatus === "rejected"
+                          ? "Ruim"
+                          : "Pendente"}
+                    </span>
                   </div>
                   <div className="result-actions">
                     <button
-                      className={selected ? "primary-button" : "ghost-button"}
+                      className={result.reviewStatus === "kept" ? "primary-button" : "ghost-button"}
                       type="button"
-                      onClick={() => toggleSelection(result.id)}
+                      disabled={busyReviewResultId === result.id}
+                      onClick={() =>
+                        void setResultReviewStatus(
+                          result.id,
+                          result.reviewStatus === "kept" ? "pending" : "kept",
+                        )
+                      }
                     >
-                      {selected ? "Selecionada" : "Selecionar"}
+                      {busyReviewResultId === result.id
+                        ? "Salvando..."
+                        : result.reviewStatus === "kept"
+                          ? "Boa"
+                          : "Marcar boa"}
+                    </button>
+                    <button
+                      className={result.reviewStatus === "rejected" ? "danger-button" : "ghost-button"}
+                      type="button"
+                      disabled={busyReviewResultId === result.id}
+                      onClick={() =>
+                        void setResultReviewStatus(
+                          result.id,
+                          result.reviewStatus === "rejected" ? "pending" : "rejected",
+                        )
+                      }
+                    >
+                      {busyReviewResultId === result.id
+                        ? "Salvando..."
+                        : result.reviewStatus === "rejected"
+                          ? "Ruim"
+                          : "Marcar ruim"}
                     </button>
                     <button
                       className="icon-button"
                       type="button"
                       onClick={() => void deleteResult(result.id)}
+                      disabled={busyReviewResultId === result.id}
                     >
                       Remover
                     </button>

@@ -12,19 +12,22 @@ export async function POST(request: Request) {
   const sessionId = await ensureServerSession();
   const payload = (await request.json()) as {
     keepIds?: string[];
+    rejectIds?: string[];
     deleteIds?: string[];
   };
 
   const keepIds = Array.isArray(payload.keepIds) ? payload.keepIds : [];
+  const rejectIds = Array.isArray(payload.rejectIds) ? payload.rejectIds : [];
   const deleteIds = Array.isArray(payload.deleteIds) ? payload.deleteIds : [];
 
-  if (!keepIds.length && !deleteIds.length) {
+  if (!keepIds.length && !rejectIds.length && !deleteIds.length) {
     return json({ error: "Nenhum resultado foi enviado para atualizacao." }, { status: 400 });
   }
 
   await updateResultSelection({
     sessionId,
     keepIds,
+    rejectIds,
     deleteIds,
   });
   await touchSession(sessionId);

@@ -443,6 +443,17 @@ img {
   background: rgba(165, 45, 45, 0.1);
 }
 
+.danger-button {
+  border: 1px solid rgba(165, 45, 45, 0.18);
+  background: rgba(165, 45, 45, 0.12);
+  color: var(--danger);
+}
+
+.result-card.rejected,
+.admin-gallery-card.rejected {
+  border-color: rgba(165, 45, 45, 0.18);
+}
+
 .result-card-placeholder {
   border-style: dashed;
   background: linear-gradient(180deg, rgba(255, 250, 242, 0.98), rgba(245, 239, 230, 0.92));
