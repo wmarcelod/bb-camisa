@@ -373,6 +373,39 @@ img {
   gap: 8px;
 }
 
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.status-copy {
+  display: inline-flex;
+  width: fit-content;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(20, 32, 25, 0.06);
+}
+
+.status-copy.generated {
+  color: var(--accent);
+}
+
+.status-copy.processing {
+  color: #8b5c00;
+  background: rgba(255, 244, 211, 0.9);
+}
+
+.status-copy.warning {
+  color: #7a4c00;
+  background: rgba(255, 237, 204, 0.92);
+}
+
+.status-copy.error {
+  color: var(--danger);
+  background: rgba(165, 45, 45, 0.1);
+}
+
 .action-row {
   display: flex;
   flex-wrap: wrap;
@@ -434,6 +467,10 @@ img {
   border-color: rgba(165, 45, 45, 0.18);
 }
 
+.result-card.kept {
+  border-color: rgba(21, 84, 63, 0.26);
+}
+
 .result-error-badge {
   display: inline-flex;
   width: fit-content;
@@ -448,6 +485,51 @@ img {
 .results-empty {
   min-height: 220px;
   align-content: center;
+}
+
+.collection-panel {
+  margin-top: 24px;
+}
+
+.collection-list {
+  display: grid;
+  gap: 12px;
+}
+
+.collection-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(20, 32, 25, 0.08);
+  background: var(--surface-strong);
+}
+
+.collection-meta,
+.collection-stats {
+  display: grid;
+  gap: 6px;
+}
+
+.collection-meta strong {
+  font-family: var(--font-heading), sans-serif;
+  font-size: 0.98rem;
+}
+
+.collection-meta span,
+.collection-stats span,
+.collection-empty {
+  color: var(--muted);
+}
+
+.collection-stats {
+  min-width: 180px;
+}
+
+.collection-link {
+  text-decoration: none;
 }
 
 .cropper-overlay {
@@ -563,6 +645,10 @@ img {
   .results-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .collection-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 740px) {
@@ -601,6 +687,16 @@ img {
   }
 
   .upload-actions .icon-button {
+    width: 100%;
+  }
+
+  .result-actions {
+    flex-direction: column;
+  }
+
+  .result-actions .ghost-button,
+  .result-actions .primary-button,
+  .result-actions .icon-button {
     width: 100%;
   }
 

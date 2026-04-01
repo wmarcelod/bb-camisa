@@ -8,5 +8,5 @@ Prompt negativo:
 export const DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-1.5";
 export const DEFAULT_OUTPUT_FORMAT = "jpeg";
 export const DEFAULT_OUTPUT_SIZE = "1024x1536";
-export const MAX_BATCH_SIZE = 12;
+export const MAX_BATCH_SIZE = 50;
 export const MAX_FILE_SIZE_MB = 15;

@@ -1,0 +1,610 @@
+import "server-only";
+
+import path from "node:path";
+import { promises as fs } from "node:fs";
+import JSZip from "jszip";
+import { getDatabase } from "@/lib/server/database";
+import {
+  ensureStorageStructure,
+  resolveResultPath,
+  resolveUploadPath,
+} from "@/lib/server/storage";
+import { sanitizeFileStem } from "@/lib/utils";
+
+export type UploadRecord = {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  width: number;
+  height: number;
+  generationStatus: "uploaded" | "processing" | "generated" | "error";
+  errorMessage: string | null;
+  imageUrl: string;
+  createdAt: string;
+};
+
+export type ResultRecord = {
+  id: string;
+  uploadId: string;
+  fileName: string;
+  imageUrl: string;
+  reviewStatus: "pending" | "kept";
+  requestId: string | null;
+  createdAt: string;
+};
+
+type UploadRow = {
+  id: string;
+  original_name: string;
+  file_size: number;
+  width: number;
+  height: number;
+  generation_status: UploadRecord["generationStatus"];
+  error_message: string | null;
+  created_at: string;
+};
+
+type ResultRow = {
+  id: string;
+  upload_id: string;
+  file_name: string;
+  review_status: ResultRecord["reviewStatus"];
+  request_id: string | null;
+  created_at: string;
+};
+
+type CollectionSessionRow = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  upload_count: number;
+  result_count: number;
+  kept_count: number;
+};
+
+type CollectionArchiveSessionRow = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type CollectionUploadRow = {
+  session_id: string;
+  upload_id: string;
+  original_name: string;
+  file_path: string;
+  mime_type: string;
+  file_size: number;
+  width: number;
+  height: number;
+  generation_status: UploadRecord["generationStatus"];
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type CollectionResultRow = {
+  session_id: string;
+  result_id: string;
+  upload_id: string;
+  file_name: string;
+  file_path: string;
+  mime_type: string;
+  review_status: ResultRecord["reviewStatus"];
+  request_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function getExtension(filename: string, mimeType: string) {
+  const fromName = path.extname(filename).replace(".", "").toLowerCase();
+
+  if (fromName) {
+    return fromName;
+  }
+
+  if (mimeType === "image/png") {
+    return "png";
+  }
+
+  if (mimeType === "image/webp") {
+    return "webp";
+  }
+
+  return "jpg";
+}
+
+function buildArchiveFileName(id: string, filename: string, mimeType: string) {
+  const extension = path.extname(filename) || `.${getExtension(filename, mimeType)}`;
+  return `${id}-${sanitizeFileStem(filename)}${extension.toLowerCase()}`;
+}
+
+function buildUploadRecord(row: UploadRow): UploadRecord {
+  return {
+    id: row.id,
+    fileName: row.original_name,
+    fileSize: row.file_size,
+    width: row.width,
+    height: row.height,
+    generationStatus: row.generation_status,
+    errorMessage: row.error_message,
+    imageUrl: `/api/files/upload/${row.id}`,
+    createdAt: row.created_at,
+  };
+}
+
+function buildResultRecord(row: ResultRow): ResultRecord {
+  return {
+    id: row.id,
+    uploadId: row.upload_id,
+    fileName: row.file_name,
+    imageUrl: `/api/files/result/${row.id}`,
+    reviewStatus: row.review_status,
+    requestId: row.request_id,
+    createdAt: row.created_at,
+  };
+}
+
+async function deleteFileIfExists(targetPath: string) {
+  try {
+    await fs.unlink(targetPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+}
+
+export async function getSessionState(sessionId: string) {
+  const database = await getDatabase();
+  const uploads = database
+    .prepare(
+      `SELECT id, original_name, file_size, width, height, generation_status, error_message, created_at
+       FROM uploads
+       WHERE session_id = ?
+       ORDER BY created_at DESC`,
+    )
+    .all(sessionId) as UploadRow[];
+  const results = database
+    .prepare(
+      `SELECT id, upload_id, file_name, review_status, request_id, created_at
+       FROM results
+       WHERE session_id = ?
+       ORDER BY created_at DESC`,
+    )
+    .all(sessionId) as ResultRow[];
+
+  return {
+    uploads: uploads.map(buildUploadRecord),
+    results: results.map(buildResultRecord),
+  };
+}
+
+export async function saveUpload(params: {
+  sessionId: string;
+  file: File;
+  width: number;
+  height: number;
+  uploadId?: string | null;
+}) {
+  const { sessionId, file, width, height, uploadId } = params;
+  const database = await getDatabase();
+  await ensureStorageStructure(sessionId);
+
+  const id = uploadId || crypto.randomUUID();
+  const timestamp = nowIso();
+  const extension = getExtension(file.name, file.type);
+  const safeName = sanitizeFileStem(file.name);
+  const storedName = `${safeName}-${id}.${extension}`;
+  const filePath = resolveUploadPath(sessionId, storedName);
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  if (uploadId) {
+    const existing = database
+      .prepare("SELECT file_path FROM uploads WHERE id = ? AND session_id = ?")
+      .get(uploadId, sessionId) as { file_path: string } | undefined;
+
+    if (!existing) {
+      throw new Error("Upload nao encontrado para atualizacao.");
+    }
+
+    await deleteResultByUpload(sessionId, uploadId);
+    await deleteFileIfExists(existing.file_path);
+
+    database
+      .prepare(
+        `UPDATE uploads
+         SET original_name = ?, mime_type = ?, file_size = ?, width = ?, height = ?, stored_name = ?, file_path = ?,
+             generation_status = 'uploaded', error_message = NULL, updated_at = ?
+         WHERE id = ? AND session_id = ?`,
+      )
+      .run(
+        file.name,
+        file.type || "image/jpeg",
+        buffer.byteLength,
+        width,
+        height,
+        storedName,
+        filePath,
+        timestamp,
+        uploadId,
+        sessionId,
+      );
+  } else {
+    database
+      .prepare(
+        `INSERT INTO uploads (
+           id, session_id, original_name, mime_type, file_size, width, height, stored_name, file_path,
+           generation_status, error_message, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploaded', NULL, ?, ?)`,
+      )
+      .run(
+        id,
+        sessionId,
+        file.name,
+        file.type || "image/jpeg",
+        buffer.byteLength,
+        width,
+        height,
+        storedName,
+        filePath,
+        timestamp,
+        timestamp,
+      );
+  }
+
+  await fs.writeFile(filePath, buffer);
+
+  const upload = database
+    .prepare(
+      `SELECT id, original_name, file_size, width, height, generation_status, error_message, created_at
+       FROM uploads
+       WHERE id = ?`,
+    )
+    .get(id) as UploadRow;
+
+  return buildUploadRecord(upload);
+}
+
+export async function deleteUpload(sessionId: string, uploadId: string) {
+  const database = await getDatabase();
+  const upload = database
+    .prepare("SELECT file_path FROM uploads WHERE id = ? AND session_id = ?")
+    .get(uploadId, sessionId) as { file_path: string } | undefined;
+
+  if (!upload) {
+    return false;
+  }
+
+  await deleteResultByUpload(sessionId, uploadId);
+  await deleteFileIfExists(upload.file_path);
+
+  database
+    .prepare("DELETE FROM uploads WHERE id = ? AND session_id = ?")
+    .run(uploadId, sessionId);
+
+  return true;
+}
+
+export async function getUploadFile(sessionId: string, uploadId: string) {
+  const database = await getDatabase();
+  return database
+    .prepare(
+      "SELECT file_path AS filePath, mime_type AS mimeType, original_name AS fileName FROM uploads WHERE id = ? AND session_id = ?",
+    )
+    .get(uploadId, sessionId) as
+    | { filePath: string; mimeType: string; fileName: string }
+    | undefined;
+}
+
+export async function getResultFile(sessionId: string, resultId: string) {
+  const database = await getDatabase();
+  return database
+    .prepare(
+      "SELECT file_path AS filePath, mime_type AS mimeType, file_name AS fileName FROM results WHERE id = ? AND session_id = ?",
+    )
+    .get(resultId, sessionId) as
+    | { filePath: string; mimeType: string; fileName: string }
+    | undefined;
+}
+
+export async function markUploadProcessing(sessionId: string, uploadId: string) {
+  const database = await getDatabase();
+  database
+    .prepare(
+      "UPDATE uploads SET generation_status = 'processing', error_message = NULL, updated_at = ? WHERE id = ? AND session_id = ?",
+    )
+    .run(nowIso(), uploadId, sessionId);
+}
+
+export async function markUploadError(sessionId: string, uploadId: string, message: string) {
+  const database = await getDatabase();
+  database
+    .prepare(
+      "UPDATE uploads SET generation_status = 'error', error_message = ?, updated_at = ? WHERE id = ? AND session_id = ?",
+    )
+    .run(message, nowIso(), uploadId, sessionId);
+}
+
+export async function getUploadForGeneration(sessionId: string, uploadId: string) {
+  const database = await getDatabase();
+  return database
+    .prepare(
+      `SELECT id, original_name AS fileName, mime_type AS mimeType, file_path AS filePath
+       FROM uploads
+       WHERE id = ? AND session_id = ?`,
+    )
+    .get(uploadId, sessionId) as
+    | { id: string; fileName: string; mimeType: string; filePath: string }
+    | undefined;
+}
+
+export async function saveGenerationResult(params: {
+  sessionId: string;
+  uploadId: string;
+  buffer: Buffer;
+  fileName: string;
+  mimeType: string;
+  requestId: string | null;
+}) {
+  const { sessionId, uploadId, buffer, fileName, mimeType, requestId } = params;
+  const database = await getDatabase();
+  await ensureStorageStructure(sessionId);
+  await deleteResultByUpload(sessionId, uploadId);
+
+  const id = crypto.randomUUID();
+  const timestamp = nowIso();
+  const extension = getExtension(fileName, mimeType);
+  const storedName = `${sanitizeFileStem(fileName)}-${id}.${extension}`;
+  const filePath = resolveResultPath(sessionId, storedName);
+
+  await fs.writeFile(filePath, buffer);
+
+  database
+    .prepare(
+      `INSERT INTO results (
+         id, session_id, upload_id, file_name, mime_type, stored_name, file_path,
+         review_status, request_id, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+    )
+    .run(id, sessionId, uploadId, fileName, mimeType, storedName, filePath, requestId, timestamp, timestamp);
+
+  database
+    .prepare(
+      "UPDATE uploads SET generation_status = 'generated', error_message = NULL, updated_at = ? WHERE id = ? AND session_id = ?",
+    )
+    .run(timestamp, uploadId, sessionId);
+
+  const result = database
+    .prepare(
+      `SELECT id, upload_id, file_name, review_status, request_id, created_at
+       FROM results
+       WHERE id = ?`,
+    )
+    .get(id) as ResultRow;
+
+  return buildResultRecord(result);
+}
+
+export async function deleteResultByUpload(sessionId: string, uploadId: string) {
+  const database = await getDatabase();
+  const existing = database
+    .prepare("SELECT id, file_path FROM results WHERE session_id = ? AND upload_id = ?")
+    .get(sessionId, uploadId) as { id: string; file_path: string } | undefined;
+
+  if (!existing) {
+    return;
+  }
+
+  await deleteFileIfExists(existing.file_path);
+  database
+    .prepare("DELETE FROM results WHERE id = ?")
+    .run(existing.id);
+}
+
+export async function updateResultSelection(params: {
+  sessionId: string;
+  keepIds: string[];
+  deleteIds: string[];
+}) {
+  const { sessionId, keepIds, deleteIds } = params;
+  const database = await getDatabase();
+  const timestamp = nowIso();
+
+  if (keepIds.length) {
+    const placeholders = keepIds.map(() => "?").join(", ");
+    database
+      .prepare(
+        `UPDATE results
+         SET review_status = 'kept', updated_at = ?
+         WHERE session_id = ? AND id IN (${placeholders})`,
+      )
+      .run(timestamp, sessionId, ...keepIds);
+  }
+
+  for (const resultId of deleteIds) {
+    const row = database
+      .prepare(
+        "SELECT id, upload_id, file_path FROM results WHERE id = ? AND session_id = ?",
+      )
+      .get(resultId, sessionId) as { id: string; upload_id: string; file_path: string } | undefined;
+
+    if (!row) {
+      continue;
+    }
+
+    await deleteFileIfExists(row.file_path);
+    database.prepare("DELETE FROM results WHERE id = ?").run(row.id);
+    database
+      .prepare(
+        "UPDATE uploads SET generation_status = 'uploaded', error_message = NULL, updated_at = ? WHERE id = ? AND session_id = ?",
+      )
+      .run(timestamp, row.upload_id, sessionId);
+  }
+}
+
+export async function listCollectionSessions() {
+  const database = await getDatabase();
+  return database
+    .prepare(
+      `SELECT
+         sessions.id,
+         sessions.created_at,
+         sessions.updated_at,
+         COUNT(DISTINCT uploads.id) AS upload_count,
+         COUNT(DISTINCT results.id) AS result_count,
+         COUNT(DISTINCT CASE WHEN results.review_status = 'kept' THEN results.id END) AS kept_count
+       FROM sessions
+       LEFT JOIN uploads ON uploads.session_id = sessions.id
+       LEFT JOIN results ON results.session_id = sessions.id
+       GROUP BY sessions.id
+       ORDER BY sessions.updated_at DESC`,
+    )
+    .all() as CollectionSessionRow[];
+}
+
+export async function buildCollectionZip(sessionId?: string) {
+  const database = await getDatabase();
+  const zip = new JSZip();
+  const params = sessionId ? [sessionId] : [];
+  const sessions = database
+    .prepare(
+      `SELECT id, created_at, updated_at
+       FROM sessions
+       ${sessionId ? "WHERE id = ?" : ""}
+       ORDER BY updated_at DESC`,
+    )
+    .all(...params) as CollectionArchiveSessionRow[];
+  const uploads = database
+    .prepare(
+      `SELECT
+         session_id,
+         id AS upload_id,
+         original_name,
+         file_path,
+         mime_type,
+         file_size,
+         width,
+         height,
+         generation_status,
+         error_message,
+         created_at,
+         updated_at
+       FROM uploads
+       ${sessionId ? "WHERE session_id = ?" : ""}
+       ORDER BY created_at DESC`,
+    )
+    .all(...params) as CollectionUploadRow[];
+  const results = database
+    .prepare(
+      `SELECT
+         session_id,
+         id AS result_id,
+         upload_id,
+         file_name,
+         file_path,
+         mime_type,
+         review_status,
+         request_id,
+         created_at,
+         updated_at
+       FROM results
+       ${sessionId ? "WHERE session_id = ?" : ""}
+       ORDER BY created_at DESC`,
+    )
+    .all(...params) as CollectionResultRow[];
+
+  for (const session of sessions) {
+    zip.folder(session.id);
+  }
+
+  for (const upload of uploads) {
+    const folder = zip.folder(upload.session_id);
+
+    if (!folder) {
+      continue;
+    }
+
+    const archiveName = buildArchiveFileName(
+      upload.upload_id,
+      upload.original_name,
+      upload.mime_type,
+    );
+    const buffer = await fs.readFile(upload.file_path);
+    folder.file(`uploads/${archiveName}`, buffer);
+  }
+
+  for (const result of results) {
+    const folder = zip.folder(result.session_id);
+
+    if (!folder) {
+      continue;
+    }
+
+    const archiveName = buildArchiveFileName(
+      result.result_id,
+      result.file_name,
+      result.mime_type,
+    );
+    const buffer = await fs.readFile(result.file_path);
+    folder.file(`resultados/${result.review_status}/${archiveName}`, buffer);
+  }
+
+  zip.file(
+    "manifest.json",
+    JSON.stringify(
+      {
+        exportedAt: nowIso(),
+        scope: sessionId ? "session" : "all",
+        sessionId: sessionId || null,
+        sessions: sessions.map((session) => ({
+          sessionId: session.id,
+          createdAt: session.created_at,
+          updatedAt: session.updated_at,
+        })),
+        uploads: uploads.map((upload) => ({
+          sessionId: upload.session_id,
+          uploadId: upload.upload_id,
+          originalName: upload.original_name,
+          storedAs: `uploads/${buildArchiveFileName(
+            upload.upload_id,
+            upload.original_name,
+            upload.mime_type,
+          )}`,
+          mimeType: upload.mime_type,
+          fileSize: upload.file_size,
+          width: upload.width,
+          height: upload.height,
+          generationStatus: upload.generation_status,
+          errorMessage: upload.error_message,
+          createdAt: upload.created_at,
+          updatedAt: upload.updated_at,
+        })),
+        results: results.map((result) => ({
+          sessionId: result.session_id,
+          resultId: result.result_id,
+          uploadId: result.upload_id,
+          fileName: result.file_name,
+          storedAs: `resultados/${result.review_status}/${buildArchiveFileName(
+            result.result_id,
+            result.file_name,
+            result.mime_type,
+          )}`,
+          mimeType: result.mime_type,
+          reviewStatus: result.review_status,
+          requestId: result.request_id,
+          createdAt: result.created_at,
+          updatedAt: result.updated_at,
+        })),
+      },
+      null,
+      2,
+    ),
+  );
+
+  return zip.generateAsync({ type: "nodebuffer" });
+}
