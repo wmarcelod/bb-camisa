@@ -178,13 +178,13 @@ img {
   align-items: start;
 }
 
-.aside-stack {
-  display: grid;
-  gap: 24px;
-}
-
 .panel {
   padding: 24px;
+}
+
+.workspace-panel {
+  display: grid;
+  gap: 22px;
 }
 
 .panel-header {
@@ -290,7 +290,6 @@ img {
 }
 
 .upload-thumb,
-.shirt-preview,
 .result-image {
   position: relative;
   overflow: hidden;
@@ -304,7 +303,6 @@ img {
 }
 
 .upload-thumb img,
-.shirt-preview img,
 .result-image img {
   object-fit: cover;
 }
@@ -435,6 +433,53 @@ img {
   margin-top: 20px;
 }
 
+.workflow-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.workflow-step,
+.workspace-summary span {
+  border: 1px solid rgba(20, 32, 25, 0.08);
+  background: var(--surface-strong);
+}
+
+.workflow-step {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 20px;
+}
+
+.workflow-step strong {
+  font-family: var(--font-heading), sans-serif;
+  font-size: 0.98rem;
+}
+
+.workflow-step span {
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.45;
+}
+
+.workspace-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.workspace-summary span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-family: var(--font-heading), sans-serif;
+  font-size: 0.84rem;
+}
+
 .progress-stack {
   display: grid;
   gap: 8px;
@@ -488,7 +533,6 @@ img {
   border: 1px dashed rgba(20, 32, 25, 0.12);
 }
 
-.shirt-preview,
 .result-image {
   aspect-ratio: 4 / 5;
 }
@@ -899,6 +943,7 @@ img {
     grid-template-columns: 1fr;
   }
 
+  .workflow-strip,
   .admin-summary-grid,
   .results-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -932,6 +977,7 @@ img {
   }
 
   .status-grid,
+  .workflow-strip,
   .admin-summary-grid,
   .admin-form-grid,
   .admin-gallery-grid,

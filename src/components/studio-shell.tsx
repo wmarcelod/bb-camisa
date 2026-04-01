@@ -13,7 +13,6 @@ import { MAX_BATCH_SIZE } from "@/lib/prompt";
 import { formatBytes } from "@/lib/utils";
 
 type StudioShellProps = {
-  baseShirtPath: string;
   openAiConfigured: boolean;
 };
 
@@ -68,7 +67,7 @@ function revokeCandidate(candidate: CropCandidate | null) {
   }
 }
 
-export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProps) {
+export function StudioShell({ openAiConfigured }: StudioShellProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cropQueueRef = useRef<CropCandidate[]>([]);
   const activeCropRef = useRef<CropCandidate | null>(null);
@@ -646,17 +645,21 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
       <section className="hero-panel">
         <div className="hero-copy">
           <p className="eyebrow">BB Camisa</p>
-          <h1>Envie as fotos e gere o lote.</h1>
+          <h1>Envie. Ajuste. Gere.</h1>
+          <p className="hero-text">
+            Carregue as fotos, enquadre o que sair de 3x4 e gere tudo no mesmo lote.
+          </p>
           <div className="hero-metrics">
             <span>Entrada 3x4</span>
             <span>Lote ate {MAX_BATCH_SIZE}</span>
+            <span>Fundo branco</span>
           </div>
         </div>
         <div className="status-card">
           <span className={`status-pill ${openAiConfigured ? "ready" : "warning"}`}>
             {openAiConfigured ? "Ativo" : "Indisponivel"}
           </span>
-          <p>{openAiConfigured ? "Envie, ajuste e gere." : "Geracao indisponivel no momento."}</p>
+          <p>{openAiConfigured ? "Fluxo pronto para uso." : "Geracao indisponivel no momento."}</p>
           <div className="status-grid">
             <div>
               <strong>Uploads</strong>
@@ -678,216 +681,214 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
         </div>
       </section>
 
-      <section className="workspace-grid">
-        <div className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Entrada</p>
-              <h2>Fotos da pessoa</h2>
-            </div>
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={clearLocalCropQueue}
-              disabled={!localPendingCropCount}
-            >
-              Fechar recortes
-            </button>
-          </div>
-
-          <div
-            className={`dropzone ${isDragging ? "dragging" : ""}`}
-            onDragEnter={(event) => {
-              event.preventDefault();
-              setIsDragging(true);
-            }}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setIsDragging(true);
-            }}
-            onDragLeave={(event) => {
-              event.preventDefault();
-              setIsDragging(false);
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              setIsDragging(false);
-              void appendFiles(event.dataTransfer.files);
-            }}
-          >
-            <input
-              ref={fileInputRef}
-              className="hidden-input"
-              type="file"
-              accept="image/*"
-              multiple
-              disabled={isPreparingFiles || isUploading || isGenerating}
-              onChange={(event) => {
-                if (event.target.files) {
-                  void appendFiles(event.target.files);
-                }
-
-                event.currentTarget.value = "";
-              }}
-            />
-            <p className="dropzone-title">Solte as fotos aqui ou selecione.</p>
-            <p className="dropzone-meta">
-              Ate {MAX_BATCH_SIZE} fotos.
-            </p>
-            <button
-              className="primary-button"
-              type="button"
-              onClick={openFilePicker}
-              disabled={isPreparingFiles || isUploading || isGenerating}
-            >
-              {isPreparingFiles || isUploading ? (
-                <span className="button-content">
-                  <span className="button-spinner" aria-hidden="true" />
-                  {liveVerb ? `${liveVerb}...` : "Processando..."}
-                </span>
-              ) : (
-                "Escolher imagens"
-              )}
-            </button>
-          </div>
-
-          {feedback ? <p className="feedback-line">{feedback}</p> : null}
-          {pendingCropCount ? (
-            <div className="crop-alert">
-              <strong>{pendingCropCount} foto(s) pendente(s).</strong>
-              <span>Ajuste para 3x4 antes de gerar.</span>
-            </div>
-          ) : null}
-
-          <div className="upload-list">
-            {uploads.length ? (
-              uploads.map((upload) => (
-                <article className="upload-card" key={upload.id}>
-                  <div className="upload-thumb">
-                    <Image
-                      alt={upload.fileName}
-                      fill
-                      sizes="120px"
-                      src={upload.imageUrl}
-                      unoptimized
-                    />
-                  </div>
-                  <div className="upload-meta">
-                    <strong>{upload.fileName}</strong>
-                    <span>{formatBytes(upload.fileSize)}</span>
-                    <small>
-                      {upload.width} x {upload.height}
-                    </small>
-                    <small
-                      className={`status-copy ${
-                        !isThreeByFour(upload.width, upload.height)
-                          ? "warning"
-                          : upload.generationStatus
-                      }`}
-                    >
-                      {!isThreeByFour(upload.width, upload.height)
-                        ? "Ajuste 3x4"
-                        : upload.generationStatus === "generated"
-                          ? "Gerada"
-                          : upload.generationStatus === "processing"
-                            ? "Gerando"
-                            : upload.generationStatus === "error"
-                              ? "Falha ao gerar"
-                              : "Salva"}
-                    </small>
-                  </div>
-                  <div className="upload-actions">
-                    <button
-                      className="icon-button"
-                      type="button"
-                      onClick={() => void openManualCrop(upload)}
-                      disabled={isGenerating || isPreparingFiles || isUploading || isSavingCrop}
-                    >
-                      Ajustar
-                    </button>
-                    <button
-                      className="icon-button"
-                      type="button"
-                      onClick={() => void removeUpload(upload.id)}
-                      disabled={isGenerating || isPreparingFiles || isUploading || isSavingCrop}
-                    >
-                      Remover
-                    </button>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <div className="empty-state">
-                <p>{isLoadingSession ? "Carregando..." : "Nenhuma foto."}</p>
-                <span>Adicione imagens para montar o lote.</span>
-              </div>
-            )}
-          </div>
-
-          <div className="action-row">
-            <button
-              className="primary-button"
-              type="button"
-              onClick={generateBatch}
-              disabled={
-                !uploads.length ||
-                isGenerating ||
-                !openAiConfigured ||
-                isPreparingFiles ||
-                isUploading ||
-                isSavingCrop ||
-                pendingCropCount > 0
-              }
-            >
-              {isGenerating ? (
-                <span className="button-content">
-                  <span className="button-spinner" aria-hidden="true" />
-                  {liveVerb ? `${liveVerb}...` : "Gerando..."}
-                </span>
-              ) : (
-                "Gerar lote"
-              )}
-            </button>
-            <div className="progress-stack">
-              <p className={`progress-line ${activeOperation ? "active" : ""}`}>
-                {activeOperation ? (
-                  <span className="live-progress">
-                    <span className="live-spinner" aria-hidden="true" />
-                    {liveProgressText}
-                  </span>
-                ) : pendingCropCount ? (
-                  "Ajuste as fotos fora de 3x4."
-                ) : (
-                  "As geradas aparecem abaixo."
-                )}
-              </p>
-              {activeOperation ? (
-                <div className="loading-track" aria-hidden="true">
-                  <span className="loading-bar" />
-                </div>
-              ) : null}
-            </div>
-          </div>
+      <section className="panel workspace-panel">
+        <div className="workflow-strip">
+          <article className="workflow-step">
+            <strong>1. Envie</strong>
+            <span>Arraste ou selecione ate {MAX_BATCH_SIZE} fotos.</span>
+          </article>
+          <article className="workflow-step">
+            <strong>2. Ajuste</strong>
+            <span>Qualquer imagem fora de 3x4 abre para enquadramento.</span>
+          </article>
+          <article className="workflow-step">
+            <strong>3. Gere</strong>
+            <span>As imagens prontas aparecem abaixo para revisao.</span>
+          </article>
         </div>
 
-        <div className="aside-stack">
-          <div className="panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">Referencia</p>
-                <h2>Camisa-base</h2>
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Entrada</p>
+            <h2>Fotos da pessoa</h2>
+          </div>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={clearLocalCropQueue}
+            disabled={!localPendingCropCount}
+          >
+            Fechar recortes
+          </button>
+        </div>
+
+        <div
+          className={`dropzone ${isDragging ? "dragging" : ""}`}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={(event) => {
+            event.preventDefault();
+            setIsDragging(false);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setIsDragging(false);
+            void appendFiles(event.dataTransfer.files);
+          }}
+        >
+          <input
+            ref={fileInputRef}
+            className="hidden-input"
+            type="file"
+            accept="image/*"
+            multiple
+            disabled={isPreparingFiles || isUploading || isGenerating}
+            onChange={(event) => {
+              if (event.target.files) {
+                void appendFiles(event.target.files);
+              }
+
+              event.currentTarget.value = "";
+            }}
+          />
+          <p className="dropzone-title">Solte as fotos aqui ou selecione.</p>
+          <p className="dropzone-meta">Entrada individual ou em lote.</p>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={openFilePicker}
+            disabled={isPreparingFiles || isUploading || isGenerating}
+          >
+            {isPreparingFiles || isUploading ? (
+              <span className="button-content">
+                <span className="button-spinner" aria-hidden="true" />
+                {liveVerb ? `${liveVerb}...` : "Processando..."}
+              </span>
+            ) : (
+              "Escolher imagens"
+            )}
+          </button>
+        </div>
+
+        {feedback ? <p className="feedback-line">{feedback}</p> : null}
+
+        <div className="workspace-summary">
+          <span>{uploads.length} no lote</span>
+          <span>{results.length} geradas</span>
+          <span>{keptCount} boas</span>
+          <span>{pendingCropCount} pendente(s) 3x4</span>
+        </div>
+
+        {pendingCropCount ? (
+          <div className="crop-alert">
+            <strong>{pendingCropCount} foto(s) pendente(s).</strong>
+            <span>Ajuste para 3x4 antes de gerar.</span>
+          </div>
+        ) : null}
+
+        <div className="upload-list">
+          {uploads.length ? (
+            uploads.map((upload) => (
+              <article className="upload-card" key={upload.id}>
+                <div className="upload-thumb">
+                  <Image
+                    alt={upload.fileName}
+                    fill
+                    sizes="120px"
+                    src={upload.imageUrl}
+                    unoptimized
+                  />
+                </div>
+                <div className="upload-meta">
+                  <strong>{upload.fileName}</strong>
+                  <span>{formatBytes(upload.fileSize)}</span>
+                  <small>
+                    {upload.width} x {upload.height}
+                  </small>
+                  <small
+                    className={`status-copy ${
+                      !isThreeByFour(upload.width, upload.height)
+                        ? "warning"
+                        : upload.generationStatus
+                    }`}
+                  >
+                    {!isThreeByFour(upload.width, upload.height)
+                      ? "Ajuste 3x4"
+                      : upload.generationStatus === "generated"
+                        ? "Gerada"
+                        : upload.generationStatus === "processing"
+                          ? "Gerando"
+                          : upload.generationStatus === "error"
+                            ? "Falha ao gerar"
+                            : "Salva"}
+                  </small>
+                </div>
+                <div className="upload-actions">
+                  <button
+                    className="icon-button"
+                    type="button"
+                    onClick={() => void openManualCrop(upload)}
+                    disabled={isGenerating || isPreparingFiles || isUploading || isSavingCrop}
+                  >
+                    Ajustar
+                  </button>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    onClick={() => void removeUpload(upload.id)}
+                    disabled={isGenerating || isPreparingFiles || isUploading || isSavingCrop}
+                  >
+                    Remover
+                  </button>
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="empty-state">
+              <p>{isLoadingSession ? "Carregando..." : "Nenhuma foto."}</p>
+              <span>Adicione as imagens para iniciar o lote.</span>
+            </div>
+          )}
+        </div>
+
+        <div className="action-row">
+          <button
+            className="primary-button"
+            type="button"
+            onClick={generateBatch}
+            disabled={
+              !uploads.length ||
+              isGenerating ||
+              !openAiConfigured ||
+              isPreparingFiles ||
+              isUploading ||
+              isSavingCrop ||
+              pendingCropCount > 0
+            }
+          >
+            {isGenerating ? (
+              <span className="button-content">
+                <span className="button-spinner" aria-hidden="true" />
+                {liveVerb ? `${liveVerb}...` : "Gerando..."}
+              </span>
+            ) : (
+              "Gerar lote"
+            )}
+          </button>
+          <div className="progress-stack">
+            <p className={`progress-line ${activeOperation ? "active" : ""}`}>
+              {activeOperation ? (
+                <span className="live-progress">
+                  <span className="live-spinner" aria-hidden="true" />
+                  {liveProgressText}
+                </span>
+              ) : pendingCropCount ? (
+                "Ajuste as fotos fora de 3x4."
+              ) : (
+                "As geradas aparecem abaixo."
+              )}
+            </p>
+            {activeOperation ? (
+              <div className="loading-track" aria-hidden="true">
+                <span className="loading-bar" />
               </div>
-            </div>
-            <div className="shirt-preview">
-              <Image
-                alt="Camisa-base"
-                fill
-                sizes="(max-width: 900px) 100vw, 420px"
-                src={baseShirtPath}
-                priority
-              />
-            </div>
-            <p className="aside-note">Aplicada em todas as geracoes.</p>
+            ) : null}
           </div>
         </div>
       </section>
