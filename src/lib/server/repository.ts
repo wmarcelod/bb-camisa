@@ -62,6 +62,19 @@ export type AdminUsageSummary = {
   averageOutputTextTokens: number;
 };
 
+export type AdminCostLedgerItem = {
+  id: string;
+  resultId: string;
+  fileName: string;
+  originalName: string | null;
+  estimatedCostUsd: number | null;
+  requestId: string | null;
+  createdAt: string;
+  deletedAt: string | null;
+  settings: GenerationSettings | null;
+  status: "active" | "deleted";
+};
+
 type UploadRow = {
   id: string;
   original_name: string;
@@ -141,6 +154,19 @@ type AdminResultRow = {
   settings_json: string | null;
   created_at: string;
   original_name: string;
+};
+
+type AdminCostLedgerRow = {
+  id: string;
+  result_id: string;
+  file_name: string;
+  original_name: string | null;
+  estimated_cost_usd: number | null;
+  request_id: string | null;
+  created_at: string;
+  deleted_at: string | null;
+  settings_json: string | null;
+  status: "active" | "deleted";
 };
 
 function nowIso() {
@@ -858,6 +884,60 @@ export async function getAdminUsageSummary() {
     averageInputImageTokens: usageCount ? totalInputImageTokens / usageCount : 0,
     averageOutputTextTokens: usageCount ? totalOutputTextTokens / usageCount : 0,
   } satisfies AdminUsageSummary;
+}
+
+export async function listAdminCostLedger() {
+  const database = await getDatabase();
+  const rows = database
+    .prepare(
+      `SELECT
+         results.id AS id,
+         results.id AS result_id,
+         results.file_name,
+         uploads.original_name,
+         results.estimated_cost_usd,
+         results.request_id,
+         results.created_at,
+         NULL AS deleted_at,
+         results.settings_json,
+         'active' AS status
+       FROM results
+       LEFT JOIN uploads ON uploads.id = results.upload_id
+       WHERE results.estimated_cost_usd IS NOT NULL
+
+       UNION ALL
+
+       SELECT
+         result_cost_log.id AS id,
+         result_cost_log.result_id,
+         result_cost_log.file_name,
+         uploads.original_name,
+         result_cost_log.estimated_cost_usd,
+         result_cost_log.request_id,
+         result_cost_log.created_at,
+         result_cost_log.deleted_at,
+         result_cost_log.settings_json,
+         'deleted' AS status
+       FROM result_cost_log
+       LEFT JOIN uploads ON uploads.id = result_cost_log.upload_id
+       WHERE result_cost_log.estimated_cost_usd IS NOT NULL
+
+       ORDER BY created_at DESC, deleted_at DESC`,
+    )
+    .all() as AdminCostLedgerRow[];
+
+  return rows.map((row) => ({
+    id: row.id,
+    resultId: row.result_id,
+    fileName: row.file_name,
+    originalName: row.original_name,
+    estimatedCostUsd: row.estimated_cost_usd,
+    requestId: row.request_id,
+    createdAt: row.created_at,
+    deletedAt: row.deleted_at,
+    settings: parseJson<GenerationSettings>(row.settings_json),
+    status: row.status,
+  })) as AdminCostLedgerItem[];
 }
 
 export async function buildCollectionZip(sessionId?: string) {

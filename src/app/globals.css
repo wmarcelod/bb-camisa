@@ -845,6 +845,46 @@ img {
   gap: 18px;
 }
 
+.admin-ledger-card {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 22px;
+  border: 1px solid rgba(20, 32, 25, 0.08);
+  background: var(--surface-strong);
+}
+
+.admin-ledger-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-ledger-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(245, 239, 230, 0.52);
+}
+
+.admin-ledger-main,
+.admin-ledger-side {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-ledger-main span,
+.admin-ledger-main small,
+.admin-ledger-side span {
+  color: var(--muted);
+}
+
+.admin-ledger-side {
+  justify-items: end;
+}
+
 .admin-gallery-toolbar {
   align-items: center;
   justify-content: space-between;
@@ -1139,6 +1179,14 @@ img {
   .admin-gallery-topline {
     flex-direction: column;
     align-items: start;
+  }
+
+  .admin-ledger-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-ledger-side {
+    justify-items: start;
   }
 
   .admin-gallery-actions {

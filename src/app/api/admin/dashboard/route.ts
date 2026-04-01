@@ -9,7 +9,7 @@ import {
   listAvailableImageModels,
   saveGenerationSettings,
 } from "@/lib/server/openai-image";
-import { getAdminUsageSummary, listAdminGallery } from "@/lib/server/repository";
+import { getAdminUsageSummary, listAdminCostLedger, listAdminGallery } from "@/lib/server/repository";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -102,11 +102,12 @@ function buildAveragesForSettings(
 }
 
 async function buildDashboardResponse(token: string | null, refreshModels = false) {
-  const [settings, items, models, summary] = await Promise.all([
+  const [settings, items, models, summary, ledger] = await Promise.all([
     getGenerationSettings(),
     listAdminGallery(),
     listAvailableImageModels(refreshModels),
     getAdminUsageSummary(),
+    listAdminCostLedger(),
   ]);
   const options = getDynamicImageParameterOptions();
   const averages = buildAveragesForSettings(items, settings);
@@ -168,6 +169,7 @@ async function buildDashboardResponse(token: string | null, refreshModels = fals
           : "gasto rastreado + quantidade sem custo salvo x baseline estimado",
     },
     items: itemsWithCosts,
+    ledger,
   };
 }
 

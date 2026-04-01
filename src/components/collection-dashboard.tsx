@@ -25,6 +25,19 @@ type DashboardItem = {
   hasRealCost: boolean;
 };
 
+type LedgerItem = {
+  id: string;
+  resultId: string;
+  fileName: string;
+  originalName: string | null;
+  estimatedCostUsd: number | null;
+  requestId: string | null;
+  createdAt: string;
+  deletedAt: string | null;
+  settings: GenerationSettings | null;
+  status: "active" | "deleted";
+};
+
 type EstimateBasis = {
   sampleCount: number;
   averageInputTextTokens: number;
@@ -80,6 +93,7 @@ type DashboardPayload = {
     estimatedTotal: string;
   };
   items: DashboardItem[];
+  ledger: LedgerItem[];
 };
 
 type CollectionDashboardProps = {
@@ -103,6 +117,21 @@ function formatUsd(value: number | null) {
 
 function formatTimestamp(value: string) {
   return new Date(value).toLocaleString("pt-BR");
+}
+
+function formatSettingsLine(settings: GenerationSettings | null) {
+  if (!settings) {
+    return "Configuracao indisponivel";
+  }
+
+  return [
+    settings.model,
+    settings.quality,
+    settings.size,
+    settings.inputFidelity,
+    settings.outputFormat,
+    settings.background,
+  ].join(" | ");
 }
 
 function calculateEstimatedImageCost(
@@ -776,6 +805,43 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                 <span>As geradas ficam salvas aqui.</span>
               </div>
             )}
+
+            <div className="admin-ledger-card">
+              <div className="admin-card-header">
+                <div>
+                  <p className="eyebrow">Log</p>
+                  <h3>Custos por imagem</h3>
+                </div>
+              </div>
+
+              {data?.ledger.length ? (
+                <div className="admin-ledger-list">
+                  {data.ledger.map((entry) => (
+                    <article className="admin-ledger-row" key={entry.id}>
+                      <div className="admin-ledger-main">
+                        <strong>{entry.originalName || entry.fileName}</strong>
+                        <span>{formatSettingsLine(entry.settings)}</span>
+                        <small>
+                          {formatTimestamp(entry.createdAt)}
+                          {entry.deletedAt
+                            ? ` | removida em ${formatTimestamp(entry.deletedAt)}`
+                            : ""}
+                        </small>
+                      </div>
+                      <div className="admin-ledger-side">
+                        <strong>{formatUsd(entry.estimatedCostUsd)}</strong>
+                        <span>{entry.status === "deleted" ? "Removida" : "Ativa"}</span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state results-empty">
+                  <p>Nenhum custo no log.</p>
+                  <span>As geracoes com custo salvo aparecem aqui.</span>
+                </div>
+              )}
+            </div>
           </section>
         </div>
       </section>
