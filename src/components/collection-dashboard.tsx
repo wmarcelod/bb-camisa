@@ -508,36 +508,6 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
               </div>
             </div>
 
-            <div className="admin-formula-card">
-              <div className="admin-card-header">
-                <div>
-                  <p className="eyebrow">Custo</p>
-                  <h3>Formula</h3>
-                </div>
-              </div>
-              <div className="formula-lines">
-                <p>
-                  <strong>Gasto rastreado</strong>
-                  <span>{data?.formula.trackedSpend || "..."}</span>
-                </p>
-                <p>
-                  <strong>Estimativa por imagem</strong>
-                  <span>{data?.formula.estimatedPerImage || "..."}</span>
-                </p>
-                <p>
-                  <strong>Total estimado</strong>
-                  <span>{data?.formula.estimatedTotal || "..."}</span>
-                </p>
-              </div>
-              <div className="formula-metrics">
-                <span>Media texto: {Math.round(data?.summary.averageInputTextTokens ?? 0)} tokens</span>
-                <span>Media imagem: {Math.round(data?.summary.averageInputImageTokens ?? 0)} tokens</span>
-                <span>Media saida texto: {Math.round(data?.summary.averageOutputTextTokens ?? 0)} tokens</span>
-                <span>Amostra real: {data?.summary.estimateSampleCount ?? 0} imagem(ns)</span>
-                <span>Base: {data?.summary.estimateSource === "sample" ? "historico real" : "baseline do fluxo"}</span>
-                <span>Legacy estimado: {formatUsd(data?.summary.estimatedLegacyUsd ?? null)}</span>
-              </div>
-            </div>
           </section>
 
           <section className="admin-gallery-panel">
