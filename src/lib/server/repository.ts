@@ -173,6 +173,24 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function ensureResultCostLogTable(database: Awaited<ReturnType<typeof getDatabase>>) {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS result_cost_log (
+      id TEXT PRIMARY KEY,
+      result_id TEXT NOT NULL UNIQUE,
+      session_id TEXT NOT NULL,
+      upload_id TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      request_id TEXT,
+      usage_json TEXT,
+      settings_json TEXT,
+      estimated_cost_usd REAL,
+      created_at TEXT NOT NULL,
+      deleted_at TEXT NOT NULL
+    );
+  `);
+}
+
 function getExtension(filename: string, mimeType: string) {
   const fromName = path.extname(filename).replace(".", "").toLowerCase();
 
@@ -257,6 +275,7 @@ async function archiveResultCostLog(params: {
   created_at: string;
 }) {
   const database = await getDatabase();
+  ensureResultCostLogTable(database);
   const deletedAt = nowIso();
 
   database
@@ -283,6 +302,7 @@ async function archiveResultCostLog(params: {
 
 export async function getSessionState(sessionId: string) {
   const database = await getDatabase();
+  ensureResultCostLogTable(database);
   const uploads = database
     .prepare(
       `SELECT id, original_name, file_size, width, height, generation_status, error_message, created_at
@@ -426,6 +446,7 @@ export async function getUploadFile(sessionId: string, uploadId: string) {
 
 export async function getResultFile(sessionId: string, resultId: string) {
   const database = await getDatabase();
+  ensureResultCostLogTable(database);
   return database
     .prepare(
       `SELECT file_path AS filePath, mime_type AS mimeType, file_name AS fileName
@@ -439,6 +460,7 @@ export async function getResultFile(sessionId: string, resultId: string) {
 
 export async function getAdminResultFile(resultId: string) {
   const database = await getDatabase();
+  ensureResultCostLogTable(database);
   return database
     .prepare(
       `SELECT file_path AS filePath, mime_type AS mimeType, file_name AS fileName
@@ -568,6 +590,7 @@ export async function saveGenerationResult(params: {
 
 export async function deleteResultByUpload(sessionId: string, uploadId: string) {
   const database = await getDatabase();
+  ensureResultCostLogTable(database);
   const existing = database
     .prepare(
       `SELECT id, session_id, upload_id, file_name, file_path, request_id, usage_json, settings_json, estimated_cost_usd, created_at
@@ -607,6 +630,7 @@ export async function updateResultSelection(params: {
 }) {
   const { sessionId, keepIds, deleteIds } = params;
   const database = await getDatabase();
+  ensureResultCostLogTable(database);
   const timestamp = nowIso();
 
   if (keepIds.length) {
@@ -699,6 +723,7 @@ export async function updateAdminResultCost(resultId: string, estimatedCostUsd: 
 
 export async function deleteAdminResult(resultId: string) {
   const database = await getDatabase();
+  ensureResultCostLogTable(database);
   const timestamp = nowIso();
   const row = database
     .prepare(
@@ -760,6 +785,7 @@ export async function listCollectionSessions() {
 
 export async function listAdminGallery() {
   const database = await getDatabase();
+  ensureResultCostLogTable(database);
   const rows = database
     .prepare(
       `SELECT
@@ -800,6 +826,7 @@ export async function listAdminGallery() {
 
 export async function getAdminUsageSummary() {
   const database = await getDatabase();
+  ensureResultCostLogTable(database);
   const rows = database
     .prepare(
       `SELECT review_status, usage_json, estimated_cost_usd
@@ -888,6 +915,7 @@ export async function getAdminUsageSummary() {
 
 export async function listAdminCostLedger() {
   const database = await getDatabase();
+  ensureResultCostLogTable(database);
   const rows = database
     .prepare(
       `SELECT
