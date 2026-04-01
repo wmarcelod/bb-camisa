@@ -53,7 +53,10 @@ type DashboardPayload = {
     moderation: Array<GenerationSettings["moderation"]>;
   };
   inputFidelityOptionsByModel: Record<string, Array<GenerationSettings["inputFidelity"]>>;
-  estimateBasisByModel: Record<string, EstimateBasis>;
+  estimateBasisByModel: Record<
+    string,
+    Partial<Record<GenerationSettings["inputFidelity"], EstimateBasis>>
+  >;
   priceTables: Record<string, PriceTable>;
   summary: {
     resultCount: number;
@@ -364,8 +367,11 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
   const selectedVisibleCount =
     filteredItems?.filter((item) => selectedIds.includes(item.id)).length ?? 0;
   const previewBasis =
-    (draft && data?.estimateBasisByModel[draft.model]) ||
-    (data ? data.estimateBasisByModel[data.settings.model] : null);
+    (draft && data?.estimateBasisByModel[draft.model]?.[draft.inputFidelity]) ||
+    (data
+      ? data.estimateBasisByModel[data.settings.model]?.[data.settings.inputFidelity]
+      : null) ||
+    null;
   const inputFidelityOptions =
     (draft && data?.inputFidelityOptionsByModel[draft.model]) || data?.options.inputFidelity || [];
   const previewEstimatedPerImageUsd =

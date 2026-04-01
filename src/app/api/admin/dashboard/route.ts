@@ -22,6 +22,36 @@ const APP_FLOW_BASELINE = {
   source: "baseline" as const,
 };
 
+const INPUT_FIDELITY_IMAGE_TOKEN_OFFSET = 12480;
+
+function normalizeImageTokensForInputFidelity(
+  imageTokens: number,
+  fromFidelity: GenerationSettings["inputFidelity"],
+  toFidelity: GenerationSettings["inputFidelity"],
+) {
+  if (fromFidelity === toFidelity) {
+    return imageTokens;
+  }
+
+  const adjusted =
+    toFidelity === "high"
+      ? imageTokens + INPUT_FIDELITY_IMAGE_TOKEN_OFFSET
+      : imageTokens - INPUT_FIDELITY_IMAGE_TOKEN_OFFSET;
+
+  return Math.max(0, adjusted);
+}
+
+function getAppFlowBaseline(settings: GenerationSettings) {
+  return {
+    ...APP_FLOW_BASELINE,
+    averageInputImageTokens: normalizeImageTokensForInputFidelity(
+      APP_FLOW_BASELINE.averageInputImageTokens,
+      "high",
+      settings.inputFidelity,
+    ),
+  };
+}
+
 function buildAveragesForSettings(
   items: Awaited<ReturnType<typeof listAdminGallery>>,
   settings: GenerationSettings,
@@ -29,15 +59,32 @@ function buildAveragesForSettings(
   const sameModelUsages = items
     .filter((item) => item.estimatedCostUsd != null)
     .filter((item) => (item.settings?.model || settings.model) === settings.model)
-    .map((item) => item.usage)
-    .filter((usage): usage is NonNullable<typeof usage> => Boolean(usage));
+    .map((item) => ({
+      usage: item.usage,
+      inputFidelity: item.settings?.inputFidelity || "high",
+    }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        usage: NonNullable<(typeof items)[number]["usage"]>;
+        inputFidelity: GenerationSettings["inputFidelity"];
+      } => Boolean(entry.usage),
+    );
 
   if (sameModelUsages.length) {
     const totals = sameModelUsages.reduce(
-      (accumulator, usage) => ({
-        text: accumulator.text + (usage.input_tokens_details?.text_tokens || 0),
-        image: accumulator.image + (usage.input_tokens_details?.image_tokens || 0),
-        outputText: accumulator.outputText + (usage.output_tokens_details?.text_tokens || 0),
+      (accumulator, entry) => ({
+        text: accumulator.text + (entry.usage.input_tokens_details?.text_tokens || 0),
+        image:
+          accumulator.image +
+          normalizeImageTokensForInputFidelity(
+            entry.usage.input_tokens_details?.image_tokens || 0,
+            entry.inputFidelity,
+            settings.inputFidelity,
+          ),
+        outputText:
+          accumulator.outputText + (entry.usage.output_tokens_details?.text_tokens || 0),
       }),
       { text: 0, image: 0, outputText: 0 },
     );
@@ -51,7 +98,7 @@ function buildAveragesForSettings(
     };
   }
 
-  return APP_FLOW_BASELINE;
+  return getAppFlowBaseline(settings);
 }
 
 async function buildDashboardResponse(token: string | null, refreshModels = false) {
@@ -64,7 +111,15 @@ async function buildDashboardResponse(token: string | null, refreshModels = fals
   const options = getDynamicImageParameterOptions();
   const averages = buildAveragesForSettings(items, settings);
   const estimateBasisByModel = Object.fromEntries(
-    models.map((model) => [model, buildAveragesForSettings(items, { ...settings, model })]),
+    models.map((model) => [
+      model,
+      Object.fromEntries(
+        getInputFidelityOptionsForModel(model).map((inputFidelity) => [
+          inputFidelity,
+          buildAveragesForSettings(items, { ...settings, model, inputFidelity }),
+        ]),
+      ),
+    ]),
   );
   const inputFidelityOptionsByModel = Object.fromEntries(
     models.map((model) => [model, getInputFidelityOptionsForModel(model)]),
