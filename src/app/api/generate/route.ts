@@ -71,13 +71,13 @@ export async function POST(request: Request) {
   await markUploadProcessing(sessionId, uploadId);
 
   openAiForm.append(
-    "image",
+    "image[]",
     new File([photoBuffer], upload.fileName || "modelo.jpg", {
       type: upload.mimeType || "image/jpeg",
     }),
   );
   openAiForm.append(
-    "image",
+    "image[]",
     new File([shirtBuffer], "base-shirt.jpeg", {
       type: "image/jpeg",
     }),
