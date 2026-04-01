@@ -21,8 +21,8 @@ type DashboardItem = {
   reviewStatus: "pending" | "kept";
   createdAt: string;
   originalName: string;
-  displayCostUsd: number | null;
-  costMode: "exact" | "estimate" | "unknown";
+  actualCostUsd: number | null;
+  hasRealCost: boolean;
 };
 
 type DashboardPayload = {
@@ -495,11 +495,15 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                     <div className="admin-gallery-meta">
                       <div className="admin-gallery-topline">
                         <strong>{item.reviewStatus === "kept" ? "Boa" : "Gerada"}</strong>
-                        <span>{item.costMode === "exact" ? "Custo exato" : item.costMode === "estimate" ? "Estimado" : "Sem custo"}</span>
+                        <span>{item.hasRealCost ? "Custo real" : "Sem custo salvo"}</span>
                       </div>
                       <span>{item.originalName}</span>
                       <small>{formatTimestamp(item.createdAt)}</small>
-                      <small>{formatUsd(item.displayCostUsd)}</small>
+                      <small>
+                        {item.hasRealCost
+                          ? formatUsd(item.actualCostUsd)
+                          : "Imagem antiga sem custo real salvo"}
+                      </small>
                     </div>
                   </article>
                 ))}
