@@ -22,6 +22,8 @@ type UploadItem = {
   id: string;
   file: File;
   previewUrl: string;
+  width: number;
+  height: number;
 };
 
 type CropCandidate = UploadItem & {
@@ -194,6 +196,8 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
             id: file.id,
             file: file.file,
             previewUrl: file.previewUrl,
+            width: file.width,
+            height: file.height,
           });
         } else {
           needsCrop.push(file);
@@ -236,6 +240,27 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
       }
 
       return current.filter((item) => item.id !== id);
+    });
+  }
+
+  function openManualCrop(id: string) {
+    if (activeCropRef.current || isPreparingFiles || isGenerating) {
+      return;
+    }
+
+    const target = uploadsRef.current.find((item) => item.id === id);
+
+    if (!target) {
+      return;
+    }
+
+    setUploads((current) => current.filter((item) => item.id !== id));
+    setActiveCrop({
+      id: target.id,
+      file: target.file,
+      previewUrl: target.previewUrl,
+      width: target.width,
+      height: target.height,
     });
   }
 
@@ -292,6 +317,8 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
           id: target.id,
           file: croppedFile,
           previewUrl,
+          width: Math.round(croppedAreaPixels.width),
+          height: Math.round(croppedAreaPixels.height),
         },
       ]);
 
@@ -544,16 +571,28 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
                   <div className="upload-meta">
                     <strong>{item.file.name}</strong>
                     <span>{formatBytes(item.file.size)}</span>
-                    <small>3x4</small>
+                    <small>
+                      {item.width} x {item.height}
+                    </small>
                   </div>
-                  <button
-                    className="icon-button"
-                    type="button"
-                    onClick={() => removeUpload(item.id)}
-                    disabled={isGenerating || isPreparingFiles}
-                  >
-                    Remover
-                  </button>
+                  <div className="upload-actions">
+                    <button
+                      className="icon-button"
+                      type="button"
+                      onClick={() => openManualCrop(item.id)}
+                      disabled={isGenerating || isPreparingFiles}
+                    >
+                      Ajustar
+                    </button>
+                    <button
+                      className="icon-button"
+                      type="button"
+                      onClick={() => removeUpload(item.id)}
+                      disabled={isGenerating || isPreparingFiles}
+                    >
+                      Remover
+                    </button>
+                  </div>
                 </article>
               ))
             ) : (

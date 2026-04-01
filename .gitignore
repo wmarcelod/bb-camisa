@@ -23,3 +23,5 @@ yarn-error.log*
 .DS_Store
 *.pem
 WhatsApp Image 2026-04-01 at 9.54.51 AM.jpeg
+.playwright-cli/
+test-non-3x4.jpg
