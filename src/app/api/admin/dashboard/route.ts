@@ -83,6 +83,8 @@ async function buildDashboardResponse(token: string | null) {
     summary: {
       ...summary,
       estimatedLegacyUsd,
+      trackedSpentUsd:
+        estimatedLegacyUsd != null ? summary.exactSpentUsd + estimatedLegacyUsd : summary.exactSpentUsd,
       estimatedTotalUsd:
         estimatedLegacyUsd != null ? summary.exactSpentUsd + estimatedLegacyUsd : null,
       estimatedCostPerImageUsd,
@@ -90,7 +92,7 @@ async function buildDashboardResponse(token: string | null) {
       estimateSource: averages?.source || "baseline",
     },
     formula: {
-      trackedSpend: "soma exata dos custos salvos por imagem",
+      trackedSpend: "custos salvos por imagem + base estimada aplicada aos resultados legados",
       estimatedPerImage:
         averages?.source === "sample"
           ? "custo base de saida do modelo ativo + media de tokens de entrada das imagens reais do mesmo modelo"

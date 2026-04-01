@@ -42,6 +42,7 @@ type DashboardPayload = {
     trackedCount: number;
     legacyCount: number;
     exactSpentUsd: number;
+    trackedSpentUsd: number;
     estimatedLegacyUsd: number | null;
     estimatedTotalUsd: number | null;
     estimatedCostPerImageUsd: number | null;
@@ -309,7 +310,7 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
           </article>
           <article className="admin-stat-card">
             <span>Gasto rastreado</span>
-            <strong>{formatUsd(data?.summary.exactSpentUsd ?? null)}</strong>
+            <strong>{formatUsd(data?.summary.trackedSpentUsd ?? null)}</strong>
           </article>
         </div>
 
