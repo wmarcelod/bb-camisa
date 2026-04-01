@@ -579,9 +579,6 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                 <small>
                   Por imagem: {formatUsd(previewEstimatedPerImageUsd)}
                 </small>
-                <small>
-                  {data?.summary.legacyCount ?? 0} imagem(ns) sem custo real salvo
-                </small>
               </div>
 
               <div className="admin-actions">
