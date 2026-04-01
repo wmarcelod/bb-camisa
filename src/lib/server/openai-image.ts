@@ -388,6 +388,7 @@ export function estimateImageCostUsd(
   averages?: {
     averageInputTextTokens: number;
     averageInputImageTokens: number;
+    averageOutputTextTokens?: number;
   } | null,
 ) {
   const price = PRICE_TABLES[normalizeModelId(settings.model)];
@@ -404,11 +405,13 @@ export function estimateImageCostUsd(
 
   const averageInputTextTokens = averages?.averageInputTextTokens || 0;
   const averageInputImageTokens = averages?.averageInputImageTokens || 0;
+  const averageOutputTextTokens = averages?.averageOutputTextTokens || 0;
 
   return (
     outputCost +
     (averageInputTextTokens / 1_000_000) * price.textInputPer1M +
-    (averageInputImageTokens / 1_000_000) * price.imageInputPer1M
+    (averageInputImageTokens / 1_000_000) * price.imageInputPer1M +
+    (averageOutputTextTokens / 1_000_000) * price.textOutputPer1M
   );
 }
 

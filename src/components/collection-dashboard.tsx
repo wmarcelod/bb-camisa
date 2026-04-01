@@ -47,7 +47,9 @@ type DashboardPayload = {
     estimatedCostPerImageUsd: number | null;
     averageInputTextTokens: number;
     averageInputImageTokens: number;
+    averageOutputTextTokens: number;
     estimateSampleCount: number;
+    estimateSource: "sample" | "baseline";
   };
   formula: {
     trackedSpend: string;
@@ -245,6 +247,23 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
         ? current.filter((id) => id !== resultId)
         : [...current, resultId],
     );
+  }
+
+  function toggleVisibleSelection() {
+    if (!filteredItems?.length) {
+      return;
+    }
+
+    const visibleIds = filteredItems.map((item) => item.id);
+    const allVisibleSelected = visibleIds.every((id) => selectedIds.includes(id));
+
+    setSelectedIds((current) => {
+      if (allVisibleSelected) {
+        return current.filter((id) => !visibleIds.includes(id));
+      }
+
+      return Array.from(new Set([...current, ...visibleIds]));
+    });
   }
 
   const filteredItems = data?.items.filter((item) => {
@@ -513,7 +532,9 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
               <div className="formula-metrics">
                 <span>Media texto: {Math.round(data?.summary.averageInputTextTokens ?? 0)} tokens</span>
                 <span>Media imagem: {Math.round(data?.summary.averageInputImageTokens ?? 0)} tokens</span>
+                <span>Media saida texto: {Math.round(data?.summary.averageOutputTextTokens ?? 0)} tokens</span>
                 <span>Amostra real: {data?.summary.estimateSampleCount ?? 0} imagem(ns)</span>
+                <span>Base: {data?.summary.estimateSource === "sample" ? "historico real" : "baseline do fluxo"}</span>
                 <span>Legacy estimado: {formatUsd(data?.summary.estimatedLegacyUsd ?? null)}</span>
               </div>
             </div>
@@ -521,36 +542,55 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
 
           <section className="admin-gallery-panel">
             <div className="admin-gallery-toolbar">
-              <div className="admin-toolbar-group">
-                <div className="filter-group">
+              <div className="filter-group">
+                <button
+                  className={filter === "all" ? "primary-button" : "ghost-button"}
+                  type="button"
+                  onClick={() => setFilter("all")}
+                >
+                  Todas
+                </button>
+                <button
+                  className={filter === "kept" ? "primary-button" : "ghost-button"}
+                  type="button"
+                  onClick={() => setFilter("kept")}
+                >
+                  Boas
+                </button>
+                <button
+                  className={filter === "pending" ? "primary-button" : "ghost-button"}
+                  type="button"
+                  onClick={() => setFilter("pending")}
+                >
+                  Pendentes
+                </button>
+              </div>
+              <span className="collection-meta-line">
+                {filteredItems?.length ?? 0} imagem(ns)
+                {selectedVisibleCount ? ` | ${selectedVisibleCount} selecionada(s)` : ""}
+              </span>
+            </div>
+
+            {selectedIds.length ? (
+              <div className="selection-bar">
+                <strong>{selectedIds.length} selecionada(s)</strong>
+                <div className="selection-bar-actions">
                   <button
-                    className={filter === "all" ? "primary-button" : "ghost-button"}
+                    className="ghost-button"
                     type="button"
-                    onClick={() => setFilter("all")}
+                    onClick={toggleVisibleSelection}
+                    disabled={Boolean(busyResult)}
                   >
-                    Todas
+                    {filteredItems?.length &&
+                    filteredItems.every((item) => selectedIds.includes(item.id))
+                      ? "Limpar visiveis"
+                      : "Selecionar visiveis"}
                   </button>
-                  <button
-                    className={filter === "kept" ? "primary-button" : "ghost-button"}
-                    type="button"
-                    onClick={() => setFilter("kept")}
-                  >
-                    Boas
-                  </button>
-                  <button
-                    className={filter === "pending" ? "primary-button" : "ghost-button"}
-                    type="button"
-                    onClick={() => setFilter("pending")}
-                  >
-                    Pendentes
-                  </button>
-                </div>
-                <div className="admin-bulk-actions">
                   <button
                     className="ghost-button"
                     type="button"
                     onClick={() => setSelectedIds([])}
-                    disabled={!selectedIds.length || Boolean(busyResult)}
+                    disabled={Boolean(busyResult)}
                   >
                     Limpar
                   </button>
@@ -558,32 +598,29 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                     className="primary-button"
                     type="button"
                     onClick={() => void runResultAction(selectedIds, "keep")}
-                    disabled={!selectedIds.length || Boolean(busyResult)}
+                    disabled={Boolean(busyResult)}
                   >
-                    Marcar boas ({selectedIds.length})
+                    Marcar boas
                   </button>
                   <button
                     className="ghost-button"
                     type="button"
                     onClick={() => void runResultAction(selectedIds, "pending")}
-                    disabled={!selectedIds.length || Boolean(busyResult)}
+                    disabled={Boolean(busyResult)}
                   >
-                    Pendentes ({selectedIds.length})
+                    Pendentes
                   </button>
                   <button
                     className="icon-button"
                     type="button"
                     onClick={() => void runResultAction(selectedIds, "delete")}
-                    disabled={!selectedIds.length || Boolean(busyResult)}
+                    disabled={Boolean(busyResult)}
                   >
-                    Remover ({selectedIds.length})
+                    Remover
                   </button>
                 </div>
               </div>
-              <span className="collection-meta-line">
-                {filteredItems?.length ?? 0} imagem(ns) {selectedVisibleCount ? `• ${selectedVisibleCount} selecionada(s)` : ""}
-              </span>
-            </div>
+            ) : null}
 
             {isLoading ? (
               <div className="empty-state results-empty">
@@ -609,7 +646,9 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                             : "Adicionar na selecao"
                         }
                       >
-                        {selectedIds.includes(item.id) ? "Selecionada" : "Selecionar"}
+                        <span className="admin-select-indicator" aria-hidden="true">
+                          {selectedIds.includes(item.id) ? "x" : ""}
+                        </span>
                       </button>
                       <Image
                         alt={item.fileName}
@@ -621,7 +660,7 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                     </div>
                     <div className="admin-gallery-meta">
                       <div className="admin-gallery-topline">
-                        <strong>{item.reviewStatus === "kept" ? "Boa" : "Gerada"}</strong>
+                        <strong>{item.reviewStatus === "kept" ? "Boa" : "Pendente"}</strong>
                         <span>{item.hasRealCost ? "Custo real" : "Sem custo salvo"}</span>
                       </div>
                       <span>{item.originalName}</span>

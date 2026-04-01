@@ -760,6 +760,26 @@ img {
   gap: 10px;
 }
 
+.selection-bar,
+.selection-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.selection-bar {
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(21, 84, 63, 0.14);
+  background: rgba(215, 241, 125, 0.16);
+}
+
+.selection-bar strong {
+  font-family: var(--font-heading), sans-serif;
+}
+
 .formula-lines,
 .formula-metrics {
   display: grid;
@@ -820,21 +840,40 @@ img {
 .admin-select-toggle {
   position: absolute;
   top: 10px;
-  right: 10px;
+  left: 10px;
   z-index: 2;
   border: 0;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
   border-radius: 999px;
-  padding: 8px 12px;
   cursor: pointer;
   background: rgba(255, 255, 255, 0.9);
   color: var(--text);
   font-family: var(--font-heading), sans-serif;
   font-size: 0.78rem;
+  box-shadow: 0 8px 20px rgba(20, 32, 25, 0.12);
 }
 
 .admin-select-toggle.selected {
   background: var(--accent);
   color: #f7fff9;
+}
+
+.admin-select-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  font-size: 0;
+}
+
+.admin-select-toggle.selected .admin-select-indicator {
+  background: currentColor;
 }
 
 .admin-gallery-meta {
@@ -1068,7 +1107,9 @@ img {
   .admin-actions,
   .admin-gallery-actions,
   .admin-toolbar-group,
-  .admin-bulk-actions {
+  .admin-bulk-actions,
+  .selection-bar,
+  .selection-bar-actions {
     width: 100%;
   }
 
@@ -1079,6 +1120,9 @@ img {
   .admin-bulk-actions .ghost-button,
   .admin-bulk-actions .primary-button,
   .admin-bulk-actions .icon-button,
+  .selection-bar-actions .ghost-button,
+  .selection-bar-actions .primary-button,
+  .selection-bar-actions .icon-button,
   .admin-gallery-actions .ghost-button,
   .admin-gallery-actions .primary-button,
   .admin-gallery-actions .icon-button {

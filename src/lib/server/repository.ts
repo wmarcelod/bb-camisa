@@ -59,6 +59,7 @@ export type AdminUsageSummary = {
   exactSpentUsd: number;
   averageInputTextTokens: number;
   averageInputImageTokens: number;
+  averageOutputTextTokens: number;
 };
 
 type UploadRow = {
@@ -681,6 +682,7 @@ export async function getAdminUsageSummary() {
   let exactSpentUsd = 0;
   let totalInputTextTokens = 0;
   let totalInputImageTokens = 0;
+  let totalOutputTextTokens = 0;
   let usageCount = 0;
 
   for (const row of rows) {
@@ -703,6 +705,7 @@ export async function getAdminUsageSummary() {
 
     totalInputTextTokens += usage.input_tokens_details?.text_tokens || 0;
     totalInputImageTokens += usage.input_tokens_details?.image_tokens || 0;
+    totalOutputTextTokens += usage.output_tokens_details?.text_tokens || 0;
     usageCount += 1;
   }
 
@@ -714,6 +717,7 @@ export async function getAdminUsageSummary() {
     exactSpentUsd,
     averageInputTextTokens: usageCount ? totalInputTextTokens / usageCount : 0,
     averageInputImageTokens: usageCount ? totalInputImageTokens / usageCount : 0,
+    averageOutputTextTokens: usageCount ? totalOutputTextTokens / usageCount : 0,
   } satisfies AdminUsageSummary;
 }
 

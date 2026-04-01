@@ -12,6 +12,14 @@ import { getAdminUsageSummary, listAdminGallery } from "@/lib/server/repository"
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const APP_FLOW_BASELINE = {
+  sampleCount: 1,
+  averageInputTextTokens: 261,
+  averageInputImageTokens: 13094,
+  averageOutputTextTokens: 398,
+  source: "baseline" as const,
+};
+
 function buildAveragesForSettings(
   items: Awaited<ReturnType<typeof listAdminGallery>>,
   settings: GenerationSettings,
@@ -27,18 +35,21 @@ function buildAveragesForSettings(
       (accumulator, usage) => ({
         text: accumulator.text + (usage.input_tokens_details?.text_tokens || 0),
         image: accumulator.image + (usage.input_tokens_details?.image_tokens || 0),
+        outputText: accumulator.outputText + (usage.output_tokens_details?.text_tokens || 0),
       }),
-      { text: 0, image: 0 },
+      { text: 0, image: 0, outputText: 0 },
     );
 
     return {
       sampleCount: sameModelUsages.length,
       averageInputTextTokens: totals.text / sameModelUsages.length,
       averageInputImageTokens: totals.image / sameModelUsages.length,
+      averageOutputTextTokens: totals.outputText / sameModelUsages.length,
+      source: "sample" as const,
     };
   }
 
-  return null;
+  return APP_FLOW_BASELINE;
 }
 
 async function buildDashboardResponse(token: string | null) {
@@ -75,18 +86,19 @@ async function buildDashboardResponse(token: string | null) {
       estimatedTotalUsd:
         estimatedLegacyUsd != null ? summary.exactSpentUsd + estimatedLegacyUsd : null,
       estimatedCostPerImageUsd,
-      estimateSampleCount: averages?.sampleCount || 0,
+      estimateSampleCount: averages?.source === "sample" ? averages.sampleCount : 0,
+      estimateSource: averages?.source || "baseline",
     },
     formula: {
       trackedSpend: "soma exata dos custos salvos por imagem",
       estimatedPerImage:
-        averages?.sampleCount
+        averages?.source === "sample"
           ? "custo base de saida do modelo ativo + media de tokens de entrada das imagens reais do mesmo modelo"
-          : "sem amostra real suficiente do modelo ativo para estimar com confianca",
+          : "custo base do modelo ativo + baseline do seu fluxo real com 2 imagens de entrada",
       estimatedTotal:
-        averages?.sampleCount
+        averages?.source === "sample"
           ? "gasto rastreado + quantidade sem custo salvo x estimativa por imagem"
-          : "estimativa desativada ate existir historico real do modelo ativo",
+          : "gasto rastreado + quantidade sem custo salvo x baseline estimado",
     },
     items: itemsWithCosts,
   };
