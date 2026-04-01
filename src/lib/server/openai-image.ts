@@ -31,7 +31,7 @@ export type ImageUsage = {
   output_tokens_details?: UsageDetails;
 };
 
-type PriceTable = {
+export type PriceTable = {
   textInputPer1M: number;
   textOutputPer1M: number;
   imageInputPer1M: number;
@@ -287,11 +287,11 @@ export async function saveGenerationSettings(input: Partial<GenerationSettings>)
   return settings;
 }
 
-export async function listAvailableImageModels() {
+export async function listAvailableImageModels(forceRefresh = false) {
   const cached = globalThis.__bbCamisaModelCache;
   const now = Date.now();
 
-  if (cached && now - cached.fetchedAt < MODEL_CACHE_TTL_MS) {
+  if (!forceRefresh && cached && now - cached.fetchedAt < MODEL_CACHE_TTL_MS) {
     return cached.models;
   }
 
@@ -343,6 +343,22 @@ export function getDynamicImageParameterOptions() {
     inputFidelity: ["high", "low"] as const,
     moderation: ["auto", "low"] as const,
   };
+}
+
+export function getImagePricingTables(models?: string[]) {
+  if (!models?.length) {
+    return PRICE_TABLES;
+  }
+
+  return Object.fromEntries(
+    models
+      .map((model) => {
+        const normalized = normalizeModelId(model);
+        const table = PRICE_TABLES[normalized];
+        return table ? [model, table] : null;
+      })
+      .filter((entry): entry is [string, PriceTable] => Boolean(entry)),
+  );
 }
 
 export function calculateImageCostUsd(model: string, usage?: ImageUsage | null) {

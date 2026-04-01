@@ -25,6 +25,22 @@ type DashboardItem = {
   hasRealCost: boolean;
 };
 
+type EstimateBasis = {
+  sampleCount: number;
+  averageInputTextTokens: number;
+  averageInputImageTokens: number;
+  averageOutputTextTokens: number;
+  source: "sample" | "baseline";
+};
+
+type PriceTable = {
+  textInputPer1M: number;
+  textOutputPer1M: number;
+  imageInputPer1M: number;
+  imageOutputPer1M: number;
+  perImage: Record<"low" | "medium" | "high", Record<"1024x1024" | "1024x1536" | "1536x1024", number>>;
+};
+
 type DashboardPayload = {
   settings: GenerationSettings;
   models: string[];
@@ -36,6 +52,8 @@ type DashboardPayload = {
     inputFidelity: Array<GenerationSettings["inputFidelity"]>;
     moderation: Array<GenerationSettings["moderation"]>;
   };
+  estimateBasisByModel: Record<string, EstimateBasis>;
+  priceTables: Record<string, PriceTable>;
   summary: {
     resultCount: number;
     keptCount: number;
@@ -83,6 +101,35 @@ function formatTimestamp(value: string) {
   return new Date(value).toLocaleString("pt-BR");
 }
 
+function calculateEstimatedImageCost(
+  settings: GenerationSettings,
+  basis: EstimateBasis | null,
+  priceTables: Record<string, PriceTable>,
+) {
+  if (settings.quality === "auto" || settings.size === "auto") {
+    return null;
+  }
+
+  const price = priceTables[settings.model];
+
+  if (!price) {
+    return null;
+  }
+
+  const outputCost = price.perImage[settings.quality]?.[settings.size];
+
+  if (outputCost == null) {
+    return null;
+  }
+
+  return (
+    outputCost +
+    ((basis?.averageInputTextTokens || 0) / 1_000_000) * price.textInputPer1M +
+    ((basis?.averageInputImageTokens || 0) / 1_000_000) * price.imageInputPer1M +
+    ((basis?.averageOutputTextTokens || 0) / 1_000_000) * price.textOutputPer1M
+  );
+}
+
 export function CollectionDashboard({ token }: CollectionDashboardProps) {
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [draft, setDraft] = useState<GenerationSettings | null>(null);
@@ -90,19 +137,30 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshingModels, setIsRefreshingModels] = useState(false);
   const [busyResult, setBusyResult] = useState<{
     id: string;
     action: "keep" | "pending" | "delete";
   } | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  async function loadDashboard() {
-    setFeedback(null);
+  async function fetchDashboard(options?: {
+    refreshModels?: boolean;
+    preserveDraft?: boolean;
+    clearFeedback?: boolean;
+  }) {
+    if (options?.clearFeedback !== false) {
+      setFeedback(null);
+    }
 
     try {
-      const response = await fetch(`/api/admin/dashboard?token=${encodeURIComponent(token)}`, {
-        cache: "no-store",
-      });
+      const query = new URLSearchParams({ token });
+
+      if (options?.refreshModels) {
+        query.set("refreshModels", "1");
+      }
+
+      const response = await fetch(`/api/admin/dashboard?${query.toString()}`, { cache: "no-store" });
       const payload = (await response.json()) as DashboardPayload & { error?: string };
 
       if (!response.ok) {
@@ -110,12 +168,36 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
       }
 
       setData(payload);
-      setDraft(payload.settings);
+      if (!options?.preserveDraft) {
+        setDraft(payload.settings);
+      }
       setSelectedIds((current) =>
         current.filter((id) => payload.items.some((item) => item.id === id)),
       );
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Nao foi possivel carregar.");
+    }
+  }
+
+  async function loadDashboard() {
+    await fetchDashboard();
+  }
+
+  async function refreshModelList() {
+    if (isRefreshingModels) {
+      return;
+    }
+
+    setIsRefreshingModels(true);
+
+    try {
+      await fetchDashboard({
+        refreshModels: true,
+        preserveDraft: true,
+        clearFeedback: false,
+      });
+    } finally {
+      setIsRefreshingModels(false);
     }
   }
 
@@ -280,6 +362,17 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
   });
   const selectedVisibleCount =
     filteredItems?.filter((item) => selectedIds.includes(item.id)).length ?? 0;
+  const previewBasis =
+    (draft && data?.estimateBasisByModel[draft.model]) ||
+    (data ? data.estimateBasisByModel[data.settings.model] : null);
+  const previewEstimatedPerImageUsd =
+    draft && data
+      ? calculateEstimatedImageCost(draft, previewBasis, data.priceTables)
+      : (data?.summary.estimatedCostPerImageUsd ?? null);
+  const previewEstimatedTotalUsd =
+    data && previewEstimatedPerImageUsd != null
+      ? data.summary.exactSpentUsd + data.summary.legacyCount * previewEstimatedPerImageUsd
+      : null;
 
   return (
     <main className="page-shell">
@@ -322,7 +415,9 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                   <p className="eyebrow">OpenAI</p>
                   <h3>Geracao</h3>
                 </div>
-                <span className="status-pill ready">Modelos ao vivo</span>
+                <span className="status-pill ready">
+                  {isRefreshingModels ? "Atualizando modelos" : "Modelos ao vivo"}
+                </span>
               </div>
 
               {draft && data ? (
@@ -331,6 +426,7 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                     <span>Modelo</span>
                     <select
                       value={draft.model}
+                      onFocus={() => void refreshModelList()}
                       onChange={(event) =>
                         setDraft({ ...draft, model: event.target.value })
                       }
@@ -479,7 +575,10 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
 
               <div className="model-estimate-strip">
                 <span>Total estimado</span>
-                <strong>{formatUsd(data?.summary.estimatedTotalUsd ?? null)}</strong>
+                <strong>{formatUsd(previewEstimatedTotalUsd)}</strong>
+                <small>
+                  Por imagem: {formatUsd(previewEstimatedPerImageUsd)}
+                </small>
                 <small>
                   {data?.summary.legacyCount ?? 0} imagem(ns) sem custo real salvo
                 </small>
@@ -493,14 +592,6 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                   disabled={!draft || isSaving}
                 >
                   {isSaving ? "Salvando..." : "Salvar configuracao"}
-                </button>
-                <button
-                  className="ghost-button"
-                  type="button"
-                  onClick={() => void loadDashboard()}
-                  disabled={isSaving}
-                >
-                  Atualizar
                 </button>
               </div>
             </div>

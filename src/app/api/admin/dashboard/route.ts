@@ -3,6 +3,7 @@ import {
   estimateImageCostUsd,
   getDynamicImageParameterOptions,
   getGenerationSettings,
+  getImagePricingTables,
   type GenerationSettings,
   listAvailableImageModels,
   saveGenerationSettings,
@@ -52,15 +53,18 @@ function buildAveragesForSettings(
   return APP_FLOW_BASELINE;
 }
 
-async function buildDashboardResponse(token: string | null) {
+async function buildDashboardResponse(token: string | null, refreshModels = false) {
   const [settings, items, models, summary] = await Promise.all([
     getGenerationSettings(),
     listAdminGallery(),
-    listAvailableImageModels(),
+    listAvailableImageModels(refreshModels),
     getAdminUsageSummary(),
   ]);
   const options = getDynamicImageParameterOptions();
   const averages = buildAveragesForSettings(items, settings);
+  const estimateBasisByModel = Object.fromEntries(
+    models.map((model) => [model, buildAveragesForSettings(items, { ...settings, model })]),
+  );
   const itemsWithCosts = items.map((item) => ({
     ...item,
     imageUrl: token ? `${item.imageUrl}?token=${encodeURIComponent(token)}` : item.imageUrl,
@@ -80,6 +84,8 @@ async function buildDashboardResponse(token: string | null) {
     settings,
     models,
     options,
+    estimateBasisByModel,
+    priceTables: getImagePricingTables(models),
     summary: {
       ...summary,
       estimatedLegacyUsd,
@@ -111,7 +117,10 @@ export async function GET(request: Request) {
     return Response.json({ error: "Nao autorizado." }, { status: 401 });
   }
 
-  return Response.json(await buildDashboardResponse(getAdminTokenFromUrl(request.url)));
+  const url = new URL(request.url);
+  const refreshModels = url.searchParams.get("refreshModels") === "1";
+
+  return Response.json(await buildDashboardResponse(getAdminTokenFromUrl(request.url), refreshModels));
 }
 
 export async function POST(request: Request) {
