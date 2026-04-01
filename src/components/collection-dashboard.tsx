@@ -42,11 +42,12 @@ type DashboardPayload = {
     trackedCount: number;
     legacyCount: number;
     exactSpentUsd: number;
-    estimatedLegacyUsd: number;
-    estimatedTotalUsd: number;
+    estimatedLegacyUsd: number | null;
+    estimatedTotalUsd: number | null;
     estimatedCostPerImageUsd: number | null;
     averageInputTextTokens: number;
     averageInputImageTokens: number;
+    estimateSampleCount: number;
   };
   formula: {
     trackedSpend: string;
@@ -83,6 +84,7 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [draft, setDraft] = useState<GenerationSettings | null>(null);
   const [filter, setFilter] = useState<"all" | "kept" | "pending">("all");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [busyResult, setBusyResult] = useState<{
@@ -106,6 +108,9 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
 
       setData(payload);
       setDraft(payload.settings);
+      setSelectedIds((current) =>
+        current.filter((id) => payload.items.some((item) => item.id === id)),
+      );
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Nao foi possivel carregar.");
     }
@@ -131,6 +136,9 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
 
         setData(payload);
         setDraft(payload.settings);
+        setSelectedIds((current) =>
+          current.filter((id) => payload.items.some((item) => item.id === id)),
+        );
       } catch (error) {
         if (active) {
           setFeedback(error instanceof Error ? error.message : "Nao foi possivel carregar.");
@@ -180,10 +188,16 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
   }
 
   async function runResultAction(
-    resultId: string,
+    resultId: string | string[],
     action: "keep" | "pending" | "delete",
   ) {
-    setBusyResult({ id: resultId, action });
+    const targetIds = Array.isArray(resultId) ? resultId : [resultId];
+
+    if (!targetIds.length) {
+      return;
+    }
+
+    setBusyResult({ id: targetIds[0], action });
     setFeedback(null);
 
     try {
@@ -193,7 +207,7 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          resultId,
+          resultIds: targetIds,
           action,
         }),
       });
@@ -204,18 +218,33 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
       }
 
       await loadDashboard();
+      setSelectedIds((current) => current.filter((id) => !targetIds.includes(id)));
       setFeedback(
         action === "delete"
-          ? "Imagem removida."
+          ? targetIds.length > 1
+            ? `${targetIds.length} imagem(ns) removida(s).`
+            : "Imagem removida."
           : action === "keep"
-            ? "Marcada como boa."
-            : "Voltou para pendente.",
+            ? targetIds.length > 1
+              ? `${targetIds.length} imagem(ns) marcada(s) como boa.`
+              : "Marcada como boa."
+            : targetIds.length > 1
+              ? `${targetIds.length} imagem(ns) voltaram para pendente.`
+              : "Voltou para pendente.",
       );
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Nao foi possivel atualizar.");
     } finally {
       setBusyResult(null);
     }
+  }
+
+  function toggleSelected(resultId: string) {
+    setSelectedIds((current) =>
+      current.includes(resultId)
+        ? current.filter((id) => id !== resultId)
+        : [...current, resultId],
+    );
   }
 
   const filteredItems = data?.items.filter((item) => {
@@ -229,6 +258,8 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
 
     return true;
   });
+  const selectedVisibleCount =
+    filteredItems?.filter((item) => selectedIds.includes(item.id)).length ?? 0;
 
   return (
     <main className="page-shell">
@@ -482,6 +513,7 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
               <div className="formula-metrics">
                 <span>Media texto: {Math.round(data?.summary.averageInputTextTokens ?? 0)} tokens</span>
                 <span>Media imagem: {Math.round(data?.summary.averageInputImageTokens ?? 0)} tokens</span>
+                <span>Amostra real: {data?.summary.estimateSampleCount ?? 0} imagem(ns)</span>
                 <span>Legacy estimado: {formatUsd(data?.summary.estimatedLegacyUsd ?? null)}</span>
               </div>
             </div>
@@ -489,31 +521,67 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
 
           <section className="admin-gallery-panel">
             <div className="admin-gallery-toolbar">
-              <div className="filter-group">
-                <button
-                  className={filter === "all" ? "primary-button" : "ghost-button"}
-                  type="button"
-                  onClick={() => setFilter("all")}
-                >
-                  Todas
-                </button>
-                <button
-                  className={filter === "kept" ? "primary-button" : "ghost-button"}
-                  type="button"
-                  onClick={() => setFilter("kept")}
-                >
-                  Boas
-                </button>
-                <button
-                  className={filter === "pending" ? "primary-button" : "ghost-button"}
-                  type="button"
-                  onClick={() => setFilter("pending")}
-                >
-                  Pendentes
-                </button>
+              <div className="admin-toolbar-group">
+                <div className="filter-group">
+                  <button
+                    className={filter === "all" ? "primary-button" : "ghost-button"}
+                    type="button"
+                    onClick={() => setFilter("all")}
+                  >
+                    Todas
+                  </button>
+                  <button
+                    className={filter === "kept" ? "primary-button" : "ghost-button"}
+                    type="button"
+                    onClick={() => setFilter("kept")}
+                  >
+                    Boas
+                  </button>
+                  <button
+                    className={filter === "pending" ? "primary-button" : "ghost-button"}
+                    type="button"
+                    onClick={() => setFilter("pending")}
+                  >
+                    Pendentes
+                  </button>
+                </div>
+                <div className="admin-bulk-actions">
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => setSelectedIds([])}
+                    disabled={!selectedIds.length || Boolean(busyResult)}
+                  >
+                    Limpar
+                  </button>
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={() => void runResultAction(selectedIds, "keep")}
+                    disabled={!selectedIds.length || Boolean(busyResult)}
+                  >
+                    Marcar boas ({selectedIds.length})
+                  </button>
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => void runResultAction(selectedIds, "pending")}
+                    disabled={!selectedIds.length || Boolean(busyResult)}
+                  >
+                    Pendentes ({selectedIds.length})
+                  </button>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    onClick={() => void runResultAction(selectedIds, "delete")}
+                    disabled={!selectedIds.length || Boolean(busyResult)}
+                  >
+                    Remover ({selectedIds.length})
+                  </button>
+                </div>
               </div>
               <span className="collection-meta-line">
-                {filteredItems?.length ?? 0} imagem(ns)
+                {filteredItems?.length ?? 0} imagem(ns) {selectedVisibleCount ? `• ${selectedVisibleCount} selecionada(s)` : ""}
               </span>
             </div>
 
@@ -525,8 +593,24 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
             ) : filteredItems?.length ? (
               <div className="admin-gallery-grid">
                 {filteredItems.map((item) => (
-                  <article className="admin-gallery-card" key={item.id}>
+                  <article
+                    className={`admin-gallery-card ${selectedIds.includes(item.id) ? "selected" : ""}`}
+                    key={item.id}
+                  >
                     <div className="admin-gallery-image">
+                      <button
+                        className={`admin-select-toggle ${selectedIds.includes(item.id) ? "selected" : ""}`}
+                        type="button"
+                        disabled={Boolean(busyResult)}
+                        onClick={() => toggleSelected(item.id)}
+                        aria-label={
+                          selectedIds.includes(item.id)
+                            ? "Remover da selecao"
+                            : "Adicionar na selecao"
+                        }
+                      >
+                        {selectedIds.includes(item.id) ? "Selecionada" : "Selecionar"}
+                      </button>
                       <Image
                         alt={item.fileName}
                         fill
@@ -552,7 +636,7 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                       <button
                         className={item.reviewStatus === "kept" ? "primary-button" : "ghost-button"}
                         type="button"
-                        disabled={busyResult?.id === item.id}
+                        disabled={Boolean(busyResult)}
                         onClick={() =>
                           void runResultAction(
                             item.id,
@@ -570,7 +654,7 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
                       <button
                         className="icon-button"
                         type="button"
-                        disabled={busyResult?.id === item.id}
+                        disabled={Boolean(busyResult)}
                         onClick={() => void runResultAction(item.id, "delete")}
                       >
                         {busyResult?.id === item.id && busyResult.action === "delete"

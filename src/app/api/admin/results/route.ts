@@ -14,29 +14,52 @@ export async function POST(request: Request) {
 
   const payload = (await request.json()) as {
     resultId?: string;
+    resultIds?: string[];
     action?: "keep" | "pending" | "delete";
   };
+  const resultIds = payload.resultIds?.filter(Boolean) || [];
+  const targetIds = resultIds.length
+    ? resultIds
+    : payload.resultId
+      ? [payload.resultId]
+      : [];
 
-  if (!payload.resultId || !payload.action) {
-    return Response.json({ error: "Informe resultId e action." }, { status: 400 });
+  if (!targetIds.length || !payload.action) {
+    return Response.json({ error: "Informe resultId/resultIds e action." }, { status: 400 });
   }
 
   if (payload.action === "delete") {
-    const removed = await deleteAdminResult(payload.resultId);
+    let removedCount = 0;
 
-    if (!removed) {
+    for (const resultId of targetIds) {
+      const removed = await deleteAdminResult(resultId);
+
+      if (removed) {
+        removedCount += 1;
+      }
+    }
+
+    if (!removedCount) {
       return Response.json({ error: "Imagem nao encontrada." }, { status: 404 });
     }
 
-    return Response.json({ ok: true });
+    return Response.json({ ok: true, count: removedCount });
   }
 
   const reviewStatus = payload.action === "keep" ? "kept" : "pending";
-  const updated = await updateAdminResultReviewStatus(payload.resultId, reviewStatus);
+  let updatedCount = 0;
 
-  if (!updated) {
+  for (const resultId of targetIds) {
+    const updated = await updateAdminResultReviewStatus(resultId, reviewStatus);
+
+    if (updated) {
+      updatedCount += 1;
+    }
+  }
+
+  if (!updatedCount) {
     return Response.json({ error: "Imagem nao encontrada." }, { status: 404 });
   }
 
-  return Response.json({ ok: true, reviewStatus });
+  return Response.json({ ok: true, reviewStatus, count: updatedCount });
 }

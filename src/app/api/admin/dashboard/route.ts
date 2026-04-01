@@ -15,7 +15,6 @@ export const dynamic = "force-dynamic";
 function buildAveragesForSettings(
   items: Awaited<ReturnType<typeof listAdminGallery>>,
   settings: GenerationSettings,
-  summary: Awaited<ReturnType<typeof getAdminUsageSummary>>,
 ) {
   const sameModelUsages = items
     .filter((item) => item.estimatedCostUsd != null)
@@ -33,15 +32,13 @@ function buildAveragesForSettings(
     );
 
     return {
+      sampleCount: sameModelUsages.length,
       averageInputTextTokens: totals.text / sameModelUsages.length,
       averageInputImageTokens: totals.image / sameModelUsages.length,
     };
   }
 
-  return {
-    averageInputTextTokens: summary.averageInputTextTokens,
-    averageInputImageTokens: summary.averageInputImageTokens,
-  };
+  return null;
 }
 
 async function buildDashboardResponse(token: string | null) {
@@ -52,7 +49,7 @@ async function buildDashboardResponse(token: string | null) {
     getAdminUsageSummary(),
   ]);
   const options = getDynamicImageParameterOptions();
-  const averages = buildAveragesForSettings(items, settings, summary);
+  const averages = buildAveragesForSettings(items, settings);
   const itemsWithCosts = items.map((item) => ({
     ...item,
     imageUrl: token ? `${item.imageUrl}?token=${encodeURIComponent(token)}` : item.imageUrl,
@@ -62,9 +59,11 @@ async function buildDashboardResponse(token: string | null) {
     actualCostUsd: item.estimatedCostUsd,
     hasRealCost: item.estimatedCostUsd != null,
   }));
-  const estimatedCostPerImageUsd = estimateImageCostUsd(settings, averages);
+  const estimatedCostPerImageUsd = averages
+    ? estimateImageCostUsd(settings, averages)
+    : null;
   const estimatedLegacyUsd =
-    estimatedCostPerImageUsd != null ? summary.legacyCount * estimatedCostPerImageUsd : 0;
+    estimatedCostPerImageUsd != null ? summary.legacyCount * estimatedCostPerImageUsd : null;
 
   return {
     settings,
@@ -73,15 +72,21 @@ async function buildDashboardResponse(token: string | null) {
     summary: {
       ...summary,
       estimatedLegacyUsd,
-      estimatedTotalUsd: summary.exactSpentUsd + estimatedLegacyUsd,
+      estimatedTotalUsd:
+        estimatedLegacyUsd != null ? summary.exactSpentUsd + estimatedLegacyUsd : null,
       estimatedCostPerImageUsd,
+      estimateSampleCount: averages?.sampleCount || 0,
     },
     formula: {
       trackedSpend: "soma exata dos custos salvos por imagem",
       estimatedPerImage:
-        "custo base de saida do modelo ativo + media de tokens de entrada das imagens com custo real do mesmo modelo",
+        averages?.sampleCount
+          ? "custo base de saida do modelo ativo + media de tokens de entrada das imagens reais do mesmo modelo"
+          : "sem amostra real suficiente do modelo ativo para estimar com confianca",
       estimatedTotal:
-        "gasto rastreado + quantidade sem custo salvo x estimativa por imagem",
+        averages?.sampleCount
+          ? "gasto rastreado + quantidade sem custo salvo x estimativa por imagem"
+          : "estimativa desativada ate existir historico real do modelo ativo",
     },
     items: itemsWithCosts,
   };

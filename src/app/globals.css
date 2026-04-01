@@ -753,6 +753,13 @@ img {
   gap: 10px;
 }
 
+.admin-toolbar-group,
+.admin-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .formula-lines,
 .formula-metrics {
   display: grid;
@@ -793,6 +800,11 @@ img {
   padding: 12px;
 }
 
+.admin-gallery-card.selected {
+  border-color: rgba(21, 84, 63, 0.34);
+  box-shadow: 0 14px 34px rgba(21, 84, 63, 0.08);
+}
+
 .admin-gallery-image {
   position: relative;
   overflow: hidden;
@@ -803,6 +815,26 @@ img {
 
 .admin-gallery-image img {
   object-fit: cover;
+}
+
+.admin-select-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text);
+  font-family: var(--font-heading), sans-serif;
+  font-size: 0.78rem;
+}
+
+.admin-select-toggle.selected {
+  background: var(--accent);
+  color: #f7fff9;
 }
 
 .admin-gallery-meta {
@@ -1034,7 +1066,9 @@ img {
 
   .filter-group,
   .admin-actions,
-  .admin-gallery-actions {
+  .admin-gallery-actions,
+  .admin-toolbar-group,
+  .admin-bulk-actions {
     width: 100%;
   }
 
@@ -1042,6 +1076,9 @@ img {
   .filter-group .primary-button,
   .admin-actions .ghost-button,
   .admin-actions .primary-button,
+  .admin-bulk-actions .ghost-button,
+  .admin-bulk-actions .primary-button,
+  .admin-bulk-actions .icon-button,
   .admin-gallery-actions .ghost-button,
   .admin-gallery-actions .primary-button,
   .admin-gallery-actions .icon-button {
