@@ -311,10 +311,6 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
             <span>Gasto rastreado</span>
             <strong>{formatUsd(data?.summary.exactSpentUsd ?? null)}</strong>
           </article>
-          <article className="admin-stat-card">
-            <span>Estimativa por imagem</span>
-            <strong>{formatUsd(data?.summary.estimatedCostPerImageUsd ?? null)}</strong>
-          </article>
         </div>
 
         <div className="admin-layout">
