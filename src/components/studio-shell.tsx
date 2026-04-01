@@ -10,7 +10,7 @@ import {
   loadImageDimensions,
   TARGET_CROP_ASPECT,
 } from "@/lib/image-processing";
-import { EXACT_IMAGE_PROMPT, MAX_BATCH_SIZE, MAX_FILE_SIZE_MB } from "@/lib/prompt";
+import { MAX_BATCH_SIZE, MAX_FILE_SIZE_MB } from "@/lib/prompt";
 import { formatBytes } from "@/lib/utils";
 
 type StudioShellProps = {
@@ -422,27 +422,19 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
     <main className="page-shell">
       <section className="hero-panel">
         <div className="hero-copy">
-          <p className="eyebrow">BB Camisa Studio</p>
-          <h1>Upload individual ou em lote para vestir a camisa-base com OpenAI.</h1>
-          <p className="hero-text">
-            O fluxo usa sempre a foto da pessoa como Imagem 1, a camisa salva no servidor
-            como Imagem 2 e o prompt fixo no backend para manter consistencia no resultado.
-          </p>
+          <p className="eyebrow">BB Camisa</p>
+          <h1>Envie as fotos e gere o lote.</h1>
           <div className="hero-metrics">
-            <span>Prompt travado no servidor</span>
-            <span>Edicao com 2 imagens de referencia</span>
-            <span>Entrada obrigatoria em 3x4</span>
+            <span>Entrada 3x4</span>
+            <span>Lote ate {MAX_BATCH_SIZE}</span>
+            <span>Camisa fixa</span>
           </div>
         </div>
         <div className="status-card">
           <span className={`status-pill ${openAiConfigured ? "ready" : "warning"}`}>
-            {openAiConfigured ? "OpenAI configurada" : "OpenAI pendente"}
+            {openAiConfigured ? "Pronto" : "OpenAI pendente"}
           </span>
-          <p>
-            {openAiConfigured
-              ? "A geracao ja pode ser executada assim que voce enviar as fotos."
-              : "O deploy funciona, mas a geracao depende da variavel OPENAI_API_KEY no Dokploy."}
-          </p>
+          <p>{openAiConfigured ? "Pode gerar." : "Falta OPENAI_API_KEY no Dokploy."}</p>
           <div className="status-grid">
             <div>
               <strong>Entrada</strong>
@@ -453,12 +445,12 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
               <span>1024 x 1536</span>
             </div>
             <div>
-              <strong>Qualidade</strong>
-              <span>High</span>
+              <strong>Lote</strong>
+              <span>{MAX_BATCH_SIZE} imagens</span>
             </div>
             <div>
-              <strong>Fidelidade</strong>
-              <span>Input high</span>
+              <strong>Camisa</strong>
+              <span>Base fixa</span>
             </div>
           </div>
         </div>
@@ -519,11 +511,10 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
               }}
             />
             <p className="dropzone-title">
-              Arraste imagens aqui ou selecione no computador.
+              Solte as fotos aqui ou selecione.
             </p>
             <p className="dropzone-meta">
-              Todas as fotos entram em 3x4. Se a proporcao nao bater, abrimos um quadro
-              interativo para enquadrar antes do lote.
+              Entrada 3x4. Se preciso, recorte antes de adicionar.
             </p>
             <button
               className="primary-button"
@@ -538,8 +529,8 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
           {feedback ? <p className="feedback-line">{feedback}</p> : null}
           {pendingCropCount ? (
             <div className="crop-alert">
-              <strong>{pendingCropCount} imagem(ns) aguardando enquadramento 3x4.</strong>
-              <span>Finalize o recorte para liberar o processamento do lote.</span>
+              <strong>{pendingCropCount} imagem(ns) pendente(s).</strong>
+              <span>Finalize o recorte 3x4 para continuar.</span>
             </div>
           ) : null}
 
@@ -553,7 +544,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
                   <div className="upload-meta">
                     <strong>{item.file.name}</strong>
                     <span>{formatBytes(item.file.size)}</span>
-                    <small>Pronto em 3x4</small>
+                    <small>3x4</small>
                   </div>
                   <button
                     className="icon-button"
@@ -567,11 +558,8 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
               ))
             ) : (
               <div className="empty-state">
-                <p>Nenhuma foto adicionada ainda.</p>
-                <span>
-                  O lote pode ter uma unica foto ou varias. O sistema bloqueia a etapa final
-                  ate todas estarem enquadradas em 3x4.
-                </span>
+                <p>Nenhuma foto.</p>
+                <span>Adicione imagens para montar o lote.</span>
               </div>
             )}
           </div>
@@ -598,13 +586,9 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
                 Processando {progress.current}/{progress.total}: {progress.fileName}
               </p>
             ) : pendingCropCount ? (
-              <p className="progress-line">
-                Conclua o enquadramento 3x4 das imagens pendentes para habilitar o lote.
-              </p>
+              <p className="progress-line">Conclua os recortes pendentes.</p>
             ) : (
-              <p className="progress-line">
-                O backend envia cada foto separadamente para manter controle do lote.
-              </p>
+              <p className="progress-line">Pronto para gerar.</p>
             )}
           </div>
         </div>
@@ -620,20 +604,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
             <div className="shirt-preview">
               <Image alt="Camisa-base" fill sizes="(max-width: 900px) 100vw, 420px" src={baseShirtPath} priority />
             </div>
-            <p className="aside-note">
-              Esta imagem fica no servidor e entra em toda requisicao como a segunda
-              referencia visual.
-            </p>
-          </div>
-
-          <div className="panel prompt-panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">Prompt fixo</p>
-                <h2>Travado no backend</h2>
-              </div>
-            </div>
-            <pre>{EXACT_IMAGE_PROMPT}</pre>
+            <p className="aside-note">Usada em todas as geracoes.</p>
           </div>
         </div>
       </section>
@@ -665,7 +636,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
                     </div>
                     <div className="result-meta">
                       <strong>{result.fileName}</strong>
-                      <span>Render finalizado</span>
+                      <span>Concluido</span>
                       {result.requestId ? <small>Request ID: {result.requestId}</small> : null}
                     </div>
                     <button className="primary-button" type="button" onClick={() => downloadOne(result)}>
@@ -685,11 +656,8 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
             ))
           ) : (
             <div className="empty-state results-empty">
-              <p>Os renders aparecem aqui apos o processamento.</p>
-              <span>
-                Se alguma imagem falhar, o lote continua e o erro fica isolado no card
-                correspondente.
-              </span>
+              <p>Os resultados aparecem aqui.</p>
+              <span>Falhas ficam isoladas por imagem.</span>
             </div>
           )}
         </div>
@@ -700,16 +668,12 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
           <div className="cropper-dialog">
             <div className="cropper-header">
               <div>
-                <p className="eyebrow">Enquadramento obrigatorio</p>
-                <h2>Ajuste a foto para 3x4</h2>
+                <p className="eyebrow">Recorte</p>
+                <h2>Ajuste para 3x4</h2>
               </div>
               <div className="cropper-queue">
-                <strong>
-                  {pendingCropCount} imagem(ns) restante(s)
-                </strong>
-                <span>
-                  Original: {activeCrop.width} x {activeCrop.height}
-                </span>
+                <strong>{pendingCropCount} restante(s)</strong>
+                <span>{activeCrop.width} x {activeCrop.height}</span>
               </div>
             </div>
 
@@ -740,10 +704,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
                     onChange={(event) => setZoom(Number(event.target.value))}
                   />
                 </label>
-                <p>
-                  O frame final precisa ficar em 3x4. Ajuste o rosto e o tronco dentro do
-                  quadro antes de continuar.
-                </p>
+                <p>Centralize a pessoa no quadro.</p>
               </div>
 
               <div className="cropper-actions">
@@ -753,7 +714,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
                   onClick={skipCrop}
                   disabled={isSavingCrop}
                 >
-                  Pular imagem
+                  Ignorar
                 </button>
                 <button
                   className="primary-button"
@@ -761,7 +722,7 @@ export function StudioShell({ baseShirtPath, openAiConfigured }: StudioShellProp
                   onClick={applyCrop}
                   disabled={isSavingCrop || !croppedAreaPixels}
                 >
-                  {isSavingCrop ? "Aplicando..." : "Aplicar enquadramento"}
+                  {isSavingCrop ? "Aplicando..." : "Aplicar"}
                 </button>
               </div>
             </div>
