@@ -369,11 +369,6 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
     draft && data
       ? calculateEstimatedImageCost(draft, previewBasis, data.priceTables)
       : (data?.summary.estimatedCostPerImageUsd ?? null);
-  const previewEstimatedTotalUsd =
-    data && previewEstimatedPerImageUsd != null
-      ? data.summary.exactSpentUsd + data.summary.legacyCount * previewEstimatedPerImageUsd
-      : null;
-
   return (
     <main className="page-shell">
       <section className="panel collection-dashboard">
@@ -574,11 +569,8 @@ export function CollectionDashboard({ token }: CollectionDashboardProps) {
               ) : null}
 
               <div className="model-estimate-strip">
-                <span>Total estimado</span>
-                <strong>{formatUsd(previewEstimatedTotalUsd)}</strong>
-                <small>
-                  Por imagem: {formatUsd(previewEstimatedPerImageUsd)}
-                </small>
+                <span>Custo estimado por imagem</span>
+                <strong>{formatUsd(previewEstimatedPerImageUsd)}</strong>
               </div>
 
               <div className="admin-actions">
