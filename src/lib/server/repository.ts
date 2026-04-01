@@ -9,6 +9,7 @@ import {
   resolveResultPath,
   resolveUploadPath,
 } from "@/lib/server/storage";
+import type { GenerationSettings, ImageUsage } from "@/lib/server/openai-image";
 import { sanitizeFileStem } from "@/lib/utils";
 
 export type UploadRecord = {
@@ -30,7 +31,34 @@ export type ResultRecord = {
   imageUrl: string;
   reviewStatus: "pending" | "kept";
   requestId: string | null;
+  estimatedCostUsd: number | null;
   createdAt: string;
+};
+
+export type AdminGalleryItem = {
+  id: string;
+  sessionId: string;
+  uploadId: string;
+  fileName: string;
+  imageUrl: string;
+  reviewStatus: "pending" | "kept";
+  requestId: string | null;
+  createdAt: string;
+  originalName: string;
+  uploadImageUrl: string;
+  estimatedCostUsd: number | null;
+  usage: ImageUsage | null;
+  settings: GenerationSettings | null;
+};
+
+export type AdminUsageSummary = {
+  resultCount: number;
+  keptCount: number;
+  trackedCount: number;
+  legacyCount: number;
+  exactSpentUsd: number;
+  averageInputTextTokens: number;
+  averageInputImageTokens: number;
 };
 
 type UploadRow = {
@@ -50,6 +78,7 @@ type ResultRow = {
   file_name: string;
   review_status: ResultRecord["reviewStatus"];
   request_id: string | null;
+  estimated_cost_usd: number | null;
   created_at: string;
 };
 
@@ -92,8 +121,25 @@ type CollectionResultRow = {
   mime_type: string;
   review_status: ResultRecord["reviewStatus"];
   request_id: string | null;
+  usage_json: string | null;
+  settings_json: string | null;
+  estimated_cost_usd: number | null;
   created_at: string;
   updated_at: string;
+};
+
+type AdminResultRow = {
+  id: string;
+  session_id: string;
+  upload_id: string;
+  file_name: string;
+  review_status: ResultRecord["reviewStatus"];
+  request_id: string | null;
+  estimated_cost_usd: number | null;
+  usage_json: string | null;
+  settings_json: string | null;
+  created_at: string;
+  original_name: string;
 };
 
 function nowIso() {
@@ -123,6 +169,18 @@ function buildArchiveFileName(id: string, filename: string, mimeType: string) {
   return `${id}-${sanitizeFileStem(filename)}${extension.toLowerCase()}`;
 }
 
+function parseJson<T>(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
 function buildUploadRecord(row: UploadRow): UploadRecord {
   return {
     id: row.id,
@@ -145,6 +203,7 @@ function buildResultRecord(row: ResultRow): ResultRecord {
     imageUrl: `/api/files/result/${row.id}`,
     reviewStatus: row.review_status,
     requestId: row.request_id,
+    estimatedCostUsd: row.estimated_cost_usd,
     createdAt: row.created_at,
   };
 }
@@ -171,7 +230,7 @@ export async function getSessionState(sessionId: string) {
     .all(sessionId) as UploadRow[];
   const results = database
     .prepare(
-      `SELECT id, upload_id, file_name, review_status, request_id, created_at
+      `SELECT id, upload_id, file_name, review_status, request_id, estimated_cost_usd, created_at
        FROM results
        WHERE session_id = ?
        ORDER BY created_at DESC`,
@@ -312,6 +371,28 @@ export async function getResultFile(sessionId: string, resultId: string) {
     | undefined;
 }
 
+export async function getAdminResultFile(resultId: string) {
+  const database = await getDatabase();
+  return database
+    .prepare(
+      "SELECT file_path AS filePath, mime_type AS mimeType, file_name AS fileName FROM results WHERE id = ?",
+    )
+    .get(resultId) as
+    | { filePath: string; mimeType: string; fileName: string }
+    | undefined;
+}
+
+export async function getAdminUploadFile(uploadId: string) {
+  const database = await getDatabase();
+  return database
+    .prepare(
+      "SELECT file_path AS filePath, mime_type AS mimeType, original_name AS fileName FROM uploads WHERE id = ?",
+    )
+    .get(uploadId) as
+    | { filePath: string; mimeType: string; fileName: string }
+    | undefined;
+}
+
 export async function markUploadProcessing(sessionId: string, uploadId: string) {
   const database = await getDatabase();
   database
@@ -350,8 +431,21 @@ export async function saveGenerationResult(params: {
   fileName: string;
   mimeType: string;
   requestId: string | null;
+  usageJson?: string | null;
+  settingsJson?: string | null;
+  estimatedCostUsd?: number | null;
 }) {
-  const { sessionId, uploadId, buffer, fileName, mimeType, requestId } = params;
+  const {
+    sessionId,
+    uploadId,
+    buffer,
+    fileName,
+    mimeType,
+    requestId,
+    usageJson = null,
+    settingsJson = null,
+    estimatedCostUsd = null,
+  } = params;
   const database = await getDatabase();
   await ensureStorageStructure(sessionId);
   await deleteResultByUpload(sessionId, uploadId);
@@ -368,10 +462,24 @@ export async function saveGenerationResult(params: {
     .prepare(
       `INSERT INTO results (
          id, session_id, upload_id, file_name, mime_type, stored_name, file_path,
-         review_status, request_id, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+         review_status, request_id, usage_json, settings_json, estimated_cost_usd, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
     )
-    .run(id, sessionId, uploadId, fileName, mimeType, storedName, filePath, requestId, timestamp, timestamp);
+    .run(
+      id,
+      sessionId,
+      uploadId,
+      fileName,
+      mimeType,
+      storedName,
+      filePath,
+      requestId,
+      usageJson,
+      settingsJson,
+      estimatedCostUsd,
+      timestamp,
+      timestamp,
+    );
 
   database
     .prepare(
@@ -381,7 +489,7 @@ export async function saveGenerationResult(params: {
 
   const result = database
     .prepare(
-      `SELECT id, upload_id, file_name, review_status, request_id, created_at
+      `SELECT id, upload_id, file_name, review_status, request_id, estimated_cost_usd, created_at
        FROM results
        WHERE id = ?`,
     )
@@ -467,6 +575,101 @@ export async function listCollectionSessions() {
     .all() as CollectionSessionRow[];
 }
 
+export async function listAdminGallery() {
+  const database = await getDatabase();
+  const rows = database
+    .prepare(
+      `SELECT
+         results.id,
+         results.session_id,
+         results.upload_id,
+         results.file_name,
+         results.review_status,
+         results.request_id,
+         results.estimated_cost_usd,
+         results.usage_json,
+         results.settings_json,
+         results.created_at,
+         uploads.original_name
+       FROM results
+       INNER JOIN uploads ON uploads.id = results.upload_id
+       ORDER BY results.created_at DESC`,
+    )
+    .all() as AdminResultRow[];
+
+  return rows.map((row) => ({
+    id: row.id,
+    sessionId: row.session_id,
+    uploadId: row.upload_id,
+    fileName: row.file_name,
+    imageUrl: `/api/admin/files/result/${row.id}`,
+    reviewStatus: row.review_status,
+    requestId: row.request_id,
+    createdAt: row.created_at,
+    originalName: row.original_name,
+    uploadImageUrl: `/api/admin/files/upload/${row.upload_id}`,
+    estimatedCostUsd: row.estimated_cost_usd,
+    usage: parseJson<ImageUsage>(row.usage_json),
+    settings: parseJson<GenerationSettings>(row.settings_json),
+  })) as AdminGalleryItem[];
+}
+
+export async function getAdminUsageSummary() {
+  const database = await getDatabase();
+  const rows = database
+    .prepare(
+      `SELECT review_status, usage_json, estimated_cost_usd
+       FROM results
+       ORDER BY created_at DESC`,
+    )
+    .all() as Array<{
+    review_status: ResultRecord["reviewStatus"];
+    usage_json: string | null;
+    estimated_cost_usd: number | null;
+  }>;
+
+  let resultCount = 0;
+  let keptCount = 0;
+  let trackedCount = 0;
+  let exactSpentUsd = 0;
+  let totalInputTextTokens = 0;
+  let totalInputImageTokens = 0;
+  let usageCount = 0;
+
+  for (const row of rows) {
+    resultCount += 1;
+
+    if (row.review_status === "kept") {
+      keptCount += 1;
+    }
+
+    if (typeof row.estimated_cost_usd === "number") {
+      trackedCount += 1;
+      exactSpentUsd += row.estimated_cost_usd;
+    }
+
+    const usage = parseJson<ImageUsage>(row.usage_json);
+
+    if (!usage) {
+      continue;
+    }
+
+    totalInputTextTokens += usage.input_tokens_details?.text_tokens || 0;
+    totalInputImageTokens += usage.input_tokens_details?.image_tokens || 0;
+    usageCount += 1;
+  }
+
+  return {
+    resultCount,
+    keptCount,
+    trackedCount,
+    legacyCount: Math.max(0, resultCount - trackedCount),
+    exactSpentUsd,
+    averageInputTextTokens: usageCount ? totalInputTextTokens / usageCount : 0,
+    averageInputImageTokens: usageCount ? totalInputImageTokens / usageCount : 0,
+  } satisfies AdminUsageSummary;
+}
+
 export async function buildCollectionZip(sessionId?: string) {
   const database = await getDatabase();
   const zip = new JSZip();
@@ -510,6 +713,9 @@ export async function buildCollectionZip(sessionId?: string) {
          mime_type,
          review_status,
          request_id,
+         usage_json,
+         settings_json,
+         estimated_cost_usd,
          created_at,
          updated_at
        FROM results
@@ -597,6 +803,9 @@ export async function buildCollectionZip(sessionId?: string) {
           mimeType: result.mime_type,
           reviewStatus: result.review_status,
           requestId: result.request_id,
+          usage: parseJson<ImageUsage>(result.usage_json),
+          settings: parseJson<GenerationSettings>(result.settings_json),
+          estimatedCostUsd: result.estimated_cost_usd,
           createdAt: result.created_at,
           updatedAt: result.updated_at,
         })),

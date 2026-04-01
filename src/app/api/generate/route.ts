@@ -1,11 +1,14 @@
 import path from "node:path";
 import { promises as fs } from "node:fs";
 import {
-  DEFAULT_OPENAI_IMAGE_MODEL,
-  DEFAULT_OUTPUT_FORMAT,
-  DEFAULT_OUTPUT_SIZE,
   EXACT_IMAGE_PROMPT,
 } from "@/lib/prompt";
+import {
+  buildSettingsSnapshot,
+  calculateImageCostUsd,
+  getGenerationSettings,
+  type ImageUsage,
+} from "@/lib/server/openai-image";
 import { ensureServerSession, touchSession } from "@/lib/server/session";
 import {
   getUploadForGeneration,
@@ -25,6 +28,7 @@ type OpenAiImageResponse = {
     b64_json?: string;
     revised_prompt?: string;
   }>;
+  usage?: ImageUsage;
   error?: {
     message?: string;
   };
@@ -67,7 +71,7 @@ export async function POST(request: Request) {
 
   const openAiForm = new FormData();
   const requestId = crypto.randomUUID();
-  const model = process.env.OPENAI_IMAGE_MODEL || DEFAULT_OPENAI_IMAGE_MODEL;
+  const settings = await getGenerationSettings();
   await markUploadProcessing(sessionId, uploadId);
 
   openAiForm.append(
@@ -82,14 +86,18 @@ export async function POST(request: Request) {
       type: "image/jpeg",
     }),
   );
-  openAiForm.append("model", model);
+  openAiForm.append("model", settings.model);
   openAiForm.append("prompt", EXACT_IMAGE_PROMPT);
-  openAiForm.append("input_fidelity", "high");
-  openAiForm.append("quality", "high");
-  openAiForm.append("size", DEFAULT_OUTPUT_SIZE);
-  openAiForm.append("background", "opaque");
-  openAiForm.append("output_format", DEFAULT_OUTPUT_FORMAT);
-  openAiForm.append("output_compression", "92");
+  openAiForm.append("input_fidelity", settings.inputFidelity);
+  openAiForm.append("quality", settings.quality);
+  openAiForm.append("size", settings.size);
+  openAiForm.append("background", settings.background);
+  openAiForm.append("moderation", settings.moderation);
+  openAiForm.append("output_format", settings.outputFormat);
+
+  if (settings.outputFormat !== "png") {
+    openAiForm.append("output_compression", String(settings.outputCompression));
+  }
 
   try {
     const openAiResponse = await fetch(OPENAI_IMAGES_URL, {
@@ -131,14 +139,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const outputFilename = `${upload.fileName.replace(/\.[^.]+$/, "")}-bb-camisa.${DEFAULT_OUTPUT_FORMAT}`;
+    const estimatedCostUsd = calculateImageCostUsd(settings.model, payload.usage);
+    const outputFilename = `${upload.fileName.replace(/\.[^.]+$/, "")}-bb-camisa.${settings.outputFormat}`;
     const result = await saveGenerationResult({
       sessionId,
       uploadId,
       buffer: Buffer.from(imageBase64, "base64"),
       fileName: outputFilename,
-      mimeType: `image/${DEFAULT_OUTPUT_FORMAT}`,
+      mimeType: `image/${settings.outputFormat}`,
       requestId: upstreamRequestId,
+      usageJson: payload.usage ? JSON.stringify(payload.usage) : null,
+      settingsJson: buildSettingsSnapshot(settings),
+      estimatedCostUsd,
     });
     await touchSession(sessionId);
 

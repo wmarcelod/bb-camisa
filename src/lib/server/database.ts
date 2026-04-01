@@ -7,6 +7,23 @@ declare global {
   var __bbCamisaDb: DatabaseSync | undefined;
 }
 
+function ensureColumn(
+  database: DatabaseSync,
+  tableName: string,
+  columnName: string,
+  definition: string,
+) {
+  const columns = database
+    .prepare(`PRAGMA table_info(${tableName})`)
+    .all() as Array<{ name: string }>;
+
+  if (columns.some((column) => column.name === columnName)) {
+    return;
+  }
+
+  database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+}
+
 function initializeDatabase(database: DatabaseSync) {
   database.exec(`
     PRAGMA journal_mode = WAL;
@@ -50,7 +67,17 @@ function initializeDatabase(database: DatabaseSync) {
       FOREIGN KEY (session_id) REFERENCES sessions(id),
       FOREIGN KEY (upload_id) REFERENCES uploads(id)
     );
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
+
+  ensureColumn(database, "results", "usage_json", "TEXT");
+  ensureColumn(database, "results", "settings_json", "TEXT");
+  ensureColumn(database, "results", "estimated_cost_usd", "REAL");
 }
 
 export async function getDatabase() {
