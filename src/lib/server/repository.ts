@@ -577,6 +577,24 @@ export async function updateAdminResultReviewStatus(
   return true;
 }
 
+export async function updateAdminResultCost(resultId: string, estimatedCostUsd: number) {
+  const database = await getDatabase();
+  const timestamp = nowIso();
+  const row = database
+    .prepare("SELECT id FROM results WHERE id = ?")
+    .get(resultId) as { id: string } | undefined;
+
+  if (!row) {
+    return false;
+  }
+
+  database
+    .prepare("UPDATE results SET estimated_cost_usd = ?, updated_at = ? WHERE id = ?")
+    .run(estimatedCostUsd, timestamp, resultId);
+
+  return true;
+}
+
 export async function deleteAdminResult(resultId: string) {
   const database = await getDatabase();
   const timestamp = nowIso();

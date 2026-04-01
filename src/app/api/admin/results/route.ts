@@ -1,6 +1,7 @@
 import { isAuthorizedAdminRequest } from "@/lib/server/admin";
 import {
   deleteAdminResult,
+  updateAdminResultCost,
   updateAdminResultReviewStatus,
 } from "@/lib/server/repository";
 
@@ -15,7 +16,8 @@ export async function POST(request: Request) {
   const payload = (await request.json()) as {
     resultId?: string;
     resultIds?: string[];
-    action?: "keep" | "pending" | "delete";
+    action?: "keep" | "pending" | "delete" | "set-cost";
+    costUsd?: number;
   };
   const resultIds = payload.resultIds?.filter(Boolean) || [];
   const targetIds = resultIds.length
@@ -26,6 +28,28 @@ export async function POST(request: Request) {
 
   if (!targetIds.length || !payload.action) {
     return Response.json({ error: "Informe resultId/resultIds e action." }, { status: 400 });
+  }
+
+  if (payload.action === "set-cost") {
+    if (!Number.isFinite(payload.costUsd)) {
+      return Response.json({ error: "Informe costUsd." }, { status: 400 });
+    }
+
+    let updatedCount = 0;
+
+    for (const resultId of targetIds) {
+      const updated = await updateAdminResultCost(resultId, Number(payload.costUsd));
+
+      if (updated) {
+        updatedCount += 1;
+      }
+    }
+
+    if (!updatedCount) {
+      return Response.json({ error: "Imagem nao encontrada." }, { status: 404 });
+    }
+
+    return Response.json({ ok: true, costUsd: Number(payload.costUsd), count: updatedCount });
   }
 
   if (payload.action === "delete") {
