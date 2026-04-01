@@ -939,38 +939,39 @@ export async function listAdminCostLedger() {
   ensureRepositorySchema(database);
   const rows = database
     .prepare(
-      `SELECT
-         results.id AS id,
-         results.id AS result_id,
-         results.file_name,
-         uploads.original_name,
-         results.estimated_cost_usd,
-         results.request_id,
-         results.created_at,
-         NULL AS deleted_at,
-         results.settings_json,
-         'active' AS status
-       FROM results
-       LEFT JOIN uploads ON uploads.id = results.upload_id
-       WHERE results.estimated_cost_usd IS NOT NULL
+      `SELECT * FROM (
+         SELECT
+           results.id AS id,
+           results.id AS result_id,
+           results.file_name,
+           uploads.original_name,
+           results.estimated_cost_usd,
+           results.request_id,
+           results.created_at,
+           NULL AS deleted_at,
+           results.settings_json,
+           'active' AS status
+         FROM results
+         LEFT JOIN uploads ON uploads.id = results.upload_id
+         WHERE results.estimated_cost_usd IS NOT NULL
 
-       UNION ALL
+         UNION ALL
 
-       SELECT
-         result_cost_log.id AS id,
-         result_cost_log.result_id,
-         result_cost_log.file_name,
-         uploads.original_name,
-         result_cost_log.estimated_cost_usd,
-         result_cost_log.request_id,
-         result_cost_log.created_at,
-         result_cost_log.deleted_at,
-         result_cost_log.settings_json,
-         'deleted' AS status
-       FROM result_cost_log
-       LEFT JOIN uploads ON uploads.id = result_cost_log.upload_id
-       WHERE result_cost_log.estimated_cost_usd IS NOT NULL
-
+         SELECT
+           result_cost_log.id AS id,
+           result_cost_log.result_id,
+           result_cost_log.file_name,
+           uploads.original_name,
+           result_cost_log.estimated_cost_usd,
+           result_cost_log.request_id,
+           result_cost_log.created_at,
+           result_cost_log.deleted_at,
+           result_cost_log.settings_json,
+           'deleted' AS status
+         FROM result_cost_log
+         LEFT JOIN uploads ON uploads.id = result_cost_log.upload_id
+         WHERE result_cost_log.estimated_cost_usd IS NOT NULL
+       )
        ORDER BY created_at DESC, deleted_at DESC`,
     )
     .all() as AdminCostLedgerRow[];
